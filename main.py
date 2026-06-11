@@ -1,9 +1,10 @@
+import os
 import requests
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-message = "🚀 OTC Bot is now connected!"
+message = "🚀 OTC Bot Connected Successfully!"
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
