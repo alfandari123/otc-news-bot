@@ -25,9 +25,10 @@ jobs:
       - name: Run Scanner
         run: |
           python scanner.py
-         - name: Send Telegram
-  env:
-    BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-    CHAT_ID: ${{ secrets.CHAT_ID }}
-  run: |
-    python send_telegram.py
+
+      - name: Send Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          python send_telegram.py
