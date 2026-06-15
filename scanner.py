@@ -1,24 +1,12 @@
-import json
-import os
 import requests
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+def get_otc_movers():
+    # דוגמה בלבד – כאן צריך API אמיתי בהמשך
+    return ["AITX", "SONN", "GVSI"]
 
-with open("watchlist.json", "r") as f:
-    watchlist = json.load(f)
+if __name__ == "__main__":
+    stocks = get_otc_movers()
 
-message = "📈 OTC Watchlist\n\n"
-
-for symbol in watchlist:
-    message += f"• {symbol}\n"
-
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-requests.post(
-    url,
-    data={
-        "chat_id": CHAT_ID,
-        "text": message
-    }
-)
+    with open("watchlist.json", "w") as f:
+        import json
+        json.dump(stocks, f)
