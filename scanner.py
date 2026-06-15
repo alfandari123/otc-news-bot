@@ -6,4 +6,4 @@ with open("watchlist.json", "r") as f:
 print("=== WATCHLIST ===")
 
 for symbol in watchlist:
-    print(symbol)
+    print(f"Checking {symbol}")
