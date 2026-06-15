@@ -8,10 +8,10 @@ CHAT_ID = os.getenv("CHAT_ID")
 with open("watchlist.json", "r") as f:
     watchlist = json.load(f)
 
-message = "🔎 OTC Scanner Report\n\n"
+message = "📈 OTC Watchlist\n\n"
 
 for symbol in watchlist:
-    message += f"Checking: {symbol}\n"
+    message += f"• {symbol}\n"
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
@@ -22,5 +22,3 @@ requests.post(
         "text": message
     }
 )
-
-print("Report sent")
