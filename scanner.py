@@ -1,12 +1,10 @@
-import requests
+import json
 
-def get_otc_movers():
-    # דוגמה בלבד – כאן צריך API אמיתי בהמשך
+def scan_otc():
     return ["AITX", "SONN", "GVSI"]
 
 if __name__ == "__main__":
-    stocks = get_otc_movers()
+    data = scan_otc()
 
     with open("watchlist.json", "w") as f:
-        import json
-        json.dump(stocks, f)
+        json.dump(data, f)
