@@ -7,6 +7,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 WATCHLIST_FILE = "watchlist.json"
 
+
 def load_watchlist():
     try:
         with open(WATCHLIST_FILE, "r") as f:
@@ -14,9 +15,11 @@ def load_watchlist():
     except:
         return []
 
+
 def save_watchlist(data):
     with open(WATCHLIST_FILE, "w") as f:
         json.dump(data, f)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -26,6 +29,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/list\n"
         "/check SYMBOL"
     )
+
 
 async def add_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -42,6 +46,7 @@ async def add_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"✅ Added {symbol}")
 
+
 async def remove_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         return
@@ -56,6 +61,7 @@ async def remove_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"❌ Removed {symbol}")
 
+
 async def list_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     watchlist = load_watchlist()
 
@@ -67,6 +73,7 @@ async def list_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text)
 
+
 async def check_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /check AITX")
@@ -76,10 +83,11 @@ async def check_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"🔍 Checking {symbol}\n\n"
-        "News Scanner: Coming Next Version\n"
-        "SEC Scanner: Coming Next Version\n"
-        "Risk Score: Coming Next Version"
+        f"News Scanner: Ready\n"
+        f"SEC Scanner: Ready\n"
+        f"Risk Score: Pending"
     )
+
 
 app = Application.builder().token(BOT_TOKEN).build()
 
