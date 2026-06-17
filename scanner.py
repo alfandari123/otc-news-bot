@@ -1,15 +1,11 @@
 import requests
 import feedparser
 import json
-import os
-
-
-API_KEY = os.getenv("ALPHA_KEY")
+import yfinance as yf
 
 
 with open("watchlist.json", "r") as f:
     watchlist = json.load(f)
-
 
 
 message = "📈 OTC Scanner Update\n\n"
@@ -19,60 +15,33 @@ message = "📈 OTC Scanner Update\n\n"
 for symbol in watchlist:
 
     price = None
-    change = None
 
 
 
-    # מקור 1 - Alpha Vantage
-
-    try:
-
-        url = (
-            "https://www.alphavantage.co/query?"
-            "function=GLOBAL_QUOTE"
-            f"&symbol={symbol}"
-            f"&apikey={API_KEY}"
-        )
-
-
-        data = requests.get(url).json()
-
-        quote = data.get("Global Quote", {})
-
-
-        price = quote.get("05. price")
-        change = quote.get("10. change percent")
-
-
-    except:
-
-        pass
+    tickers = [
+        symbol,
+        symbol + ".PK",
+        symbol + ".OB"
+    ]
 
 
 
-
-    # מקור 2 - Yahoo
-
-    if not price:
+    for ticker_symbol in tickers:
 
         try:
 
-            url = (
-                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+            ticker = yf.Ticker(ticker_symbol)
+
+            data = ticker.history(
+                period="1d"
             )
 
 
-            data = requests.get(url).json()
+            if not data.empty:
 
+                price = data["Close"].iloc[-1]
 
-            result = data["chart"]["result"][0]
-
-
-            meta = result.get("meta", {})
-
-
-            price = meta.get("regularMarketPrice")
-
+                break
 
 
         except:
@@ -82,20 +51,11 @@ for symbol in watchlist:
 
 
 
-
     if price:
 
 
         message += f"📊 {symbol}\n"
-        message += f"💵 Price: {price}\n"
-
-
-        if change:
-
-            message += f"📈 Change: {change}\n"
-
-
-        message += "\n"
+        message += f"💵 Price: {price:.6f}\n\n"
 
 
 
@@ -110,7 +70,9 @@ for symbol in watchlist:
 
 
 
+
 message += "📰 OTC News\n\n"
+
 
 
 
@@ -121,6 +83,7 @@ for symbol in watchlist:
     news = feedparser.parse(
         f"https://news.google.com/rss/search?q={symbol}+OTC+stock"
     )
+
 
 
     if news.entries:
