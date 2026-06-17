@@ -8,31 +8,57 @@ with open("watchlist.json", "r") as f:
 message = "📈 OTC Scanner Update\n\n"
 
 for symbol in watchlist:
+
     try:
-        stock = yf.Ticker(symbol)
-        data = stock.history(period="1d")
+        ticker = yf.Ticker(symbol)
 
-        if not data.empty:
+        data = ticker.history(period="2d")
+
+        if len(data) >= 2:
+
             price = data["Close"].iloc[-1]
-            message += f"🔹 {symbol}\n"
-            message += f"💵 Price: {price:.6f}\n\n"
+            old_price = data["Close"].iloc[-2]
+
+            change = ((price - old_price) / old_price) * 100
+
+            emoji = "🚀" if change > 0 else "🔻"
+
+            message += f"{emoji} {symbol}\n"
+            message += f"💵 Price: {price:.6f}\n"
+            message += f"📊 Change: {change:.2f}%\n\n"
+
         else:
-            message += f"🔹 {symbol}\nNo data\n\n"
-
-    except Exception as e:
-        message += f"🔹 {symbol}\nError\n\n"
+            message += f"⚠️ {symbol}\nNo data\n\n"
 
 
-message += "📰 Latest OTC News\n\n"
+    except Exception:
+        message += f"⚠️ {symbol}\nError\n\n"
 
-news = feedparser.parse(
-    "https://news.google.com/rss/search?q=OTC+stock"
-)
 
-for item in news.entries[:5]:
-    message += f"• {item.title}\n"
+
+message += "📰 OTC News\n\n"
+
+
+for symbol in watchlist:
+
+    news = feedparser.parse(
+        f"https://news.google.com/rss/search?q={symbol}+stock+OTC"
+    )
+
+    if news.entries:
+
+        message += f"🔎 {symbol}\n"
+
+        for item in news.entries[:2]:
+            message += f"• {item.title}\n"
+
+        message += "\n"
+
 
 with open("telegram_message.txt", "w") as f:
     f.write(message)
 
+
 print("Scanner finished")
+
+
