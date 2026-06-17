@@ -1,4 +1,3 @@
-import requests
 import feedparser
 import json
 import yfinance as yf
@@ -17,13 +16,12 @@ for symbol in watchlist:
     price = None
 
 
-
     tickers = [
         symbol,
         symbol + ".PK",
-        symbol + ".OB"
+        symbol + ".OB",
+        symbol + ".OTC"
     ]
-
 
 
     for ticker_symbol in tickers:
@@ -33,7 +31,7 @@ for symbol in watchlist:
             ticker = yf.Ticker(ticker_symbol)
 
             data = ticker.history(
-                period="1d"
+                period="5d"
             )
 
 
@@ -58,7 +56,6 @@ for symbol in watchlist:
         message += f"💵 Price: {price:.6f}\n\n"
 
 
-
     else:
 
 
@@ -70,9 +67,7 @@ for symbol in watchlist:
 
 
 
-
 message += "📰 OTC News\n\n"
-
 
 
 
@@ -83,7 +78,6 @@ for symbol in watchlist:
     news = feedparser.parse(
         f"https://news.google.com/rss/search?q={symbol}+OTC+stock"
     )
-
 
 
     if news.entries:
