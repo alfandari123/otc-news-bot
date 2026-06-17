@@ -14,32 +14,41 @@ for symbol in watchlist:
 
     try:
 
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        url = f"https://www.otcmarkets.com/stock/{symbol}/quote"
 
-        data = requests.get(url).json()
-
-        result = data["chart"]["result"][0]
-
-        price = result["meta"]["regularMarketPrice"]
-
-        message += f"🚀 {symbol}\n"
-        message += f"💵 Price: {price}\n\n"
+        r = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
 
 
-    except Exception as e:
+        if r.status_code == 200:
 
-        message += f"⚠️ {symbol}\nNo price data\n\n"
+            text = r.text
+
+            message += f"🚀 {symbol}\n"
+            message += "💵 OTC data found\n\n"
+
+        else:
+
+            message += f"⚠️ {symbol}\nNo data\n\n"
+
+
+    except Exception:
+
+        message += f"⚠️ {symbol}\nError\n\n"
 
 
 
 message += "📰 OTC News\n\n"
 
 
-
 for symbol in watchlist:
 
     news = feedparser.parse(
-        f"https://news.google.com/rss/search?q={symbol}+OTC+stock"
+        f"https://news.google.com/rss/search?q={symbol}+stock+OTC"
     )
 
 
@@ -47,11 +56,9 @@ for symbol in watchlist:
 
         message += f"🔎 {symbol}\n"
 
-
         for item in news.entries[:2]:
 
             message += f"• {item.title}\n"
-
 
         message += "\n"
 
@@ -62,4 +69,3 @@ with open("telegram_message.txt", "w") as f:
 
 
 print("Scanner finished")
-
