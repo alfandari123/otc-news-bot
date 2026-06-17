@@ -11,73 +11,100 @@ with open("watchlist.json", "r") as f:
     watchlist = json.load(f)
 
 
+
 message = "📈 OTC Scanner Update\n\n"
 
 
 
 for symbol in watchlist:
 
+    price = None
+    change = None
+
+
+
+    # מקור 1 - Alpha Vantage
+
     try:
 
-        price = None
-        change = None
+        url = (
+            "https://www.alphavantage.co/query?"
+            "function=GLOBAL_QUOTE"
+            f"&symbol={symbol}"
+            f"&apikey={API_KEY}"
+        )
 
 
-        symbols_to_try = [
-            symbol,
-            symbol + ".OB"
-        ]
+        data = requests.get(url).json()
+
+        quote = data.get("Global Quote", {})
 
 
-        for ticker in symbols_to_try:
+        price = quote.get("05. price")
+        change = quote.get("10. change percent")
 
+
+    except:
+
+        pass
+
+
+
+
+    # מקור 2 - Yahoo
+
+    if not price:
+
+        try:
 
             url = (
-                "https://www.alphavantage.co/query?"
-                f"function=GLOBAL_QUOTE"
-                f"&symbol={ticker}"
-                f"&apikey={API_KEY}"
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
             )
 
 
             data = requests.get(url).json()
 
 
-            quote = data.get("Global Quote", {})
+            result = data["chart"]["result"][0]
 
 
-            if quote.get("05. price"):
-
-                price = quote.get("05. price")
-                change = quote.get("10. change percent")
-                break
+            meta = result.get("meta", {})
 
 
-
-
-        if price:
-
-
-            message += f"📊 {symbol}\n"
-            message += f"💵 Price: {price}\n"
-            message += f"📈 Change: {change}\n\n"
+            price = meta.get("regularMarketPrice")
 
 
 
-        else:
+        except:
 
-
-            message += f"⚠️ {symbol}\n"
-            message += "No price data\n\n"
+            pass
 
 
 
 
-    except Exception:
+
+    if price:
+
+
+        message += f"📊 {symbol}\n"
+        message += f"💵 Price: {price}\n"
+
+
+        if change:
+
+            message += f"📈 Change: {change}\n"
+
+
+        message += "\n"
+
+
+
+    else:
 
 
         message += f"⚠️ {symbol}\n"
-        message += "Error\n\n"
+        message += "No price data\n\n"
+
 
 
 
