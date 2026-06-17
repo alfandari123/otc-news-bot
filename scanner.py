@@ -1,58 +1,60 @@
-import yfinance as yf
+import requests
 import feedparser
 import json
+
 
 with open("watchlist.json", "r") as f:
     watchlist = json.load(f)
 
+
 message = "📈 OTC Scanner Update\n\n"
+
 
 for symbol in watchlist:
 
     try:
-        ticker = yf.Ticker(symbol)
 
-        data = ticker.history(period="2d")
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 
-        if len(data) >= 2:
+        data = requests.get(url).json()
 
-            price = data["Close"].iloc[-1]
-            old_price = data["Close"].iloc[-2]
+        result = data["chart"]["result"][0]
 
-            change = ((price - old_price) / old_price) * 100
+        price = result["meta"]["regularMarketPrice"]
 
-            emoji = "🚀" if change > 0 else "🔻"
-
-            message += f"{emoji} {symbol}\n"
-            message += f"💵 Price: {price:.6f}\n"
-            message += f"📊 Change: {change:.2f}%\n\n"
-
-        else:
-            message += f"⚠️ {symbol}\nNo data\n\n"
+        message += f"🚀 {symbol}\n"
+        message += f"💵 Price: {price}\n\n"
 
 
-    except Exception:
-        message += f"⚠️ {symbol}\nError\n\n"
+    except Exception as e:
+
+        message += f"⚠️ {symbol}\nNo price data\n\n"
 
 
 
 message += "📰 OTC News\n\n"
 
 
+
 for symbol in watchlist:
 
     news = feedparser.parse(
-        f"https://news.google.com/rss/search?q={symbol}+stock+OTC"
+        f"https://news.google.com/rss/search?q={symbol}+OTC+stock"
     )
+
 
     if news.entries:
 
         message += f"🔎 {symbol}\n"
 
+
         for item in news.entries[:2]:
+
             message += f"• {item.title}\n"
 
+
         message += "\n"
+
 
 
 with open("telegram_message.txt", "w") as f:
@@ -60,5 +62,4 @@ with open("telegram_message.txt", "w") as f:
 
 
 print("Scanner finished")
-
 
