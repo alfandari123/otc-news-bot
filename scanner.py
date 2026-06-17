@@ -1,6 +1,6 @@
-import requests
 import feedparser
 import json
+import yfinance as yf
 
 
 with open("watchlist.json", "r") as f:
@@ -16,60 +16,35 @@ for symbol in watchlist:
     price = None
 
 
-    try:
-
-
-        url = (
-            f"https://www.otcmarkets.com/stock/{symbol}/quote"
-        )
-
-
-        r = requests.get(
-            url,
-            headers={
-                "User-Agent":"Mozilla/5.0"
-            }
-        )
-
-
-        text = r.text
+    tickers = [
+        symbol,
+        symbol + ".PK",
+        symbol + ".OB"
+    ]
 
 
 
-        words = [
-            "lastPrice",
-            "last",
-            "price"
-        ]
+    for ticker_symbol in tickers:
+
+        try:
+
+            ticker = yf.Ticker(ticker_symbol)
+
+            data = ticker.history(
+                period="5d"
+            )
 
 
-        for word in words:
+            if not data.empty:
 
-            if word in text:
+                price = data["Close"].iloc[-1]
 
-                start = text.find(word)
-
-                part = text[start:start+100]
+                break
 
 
-                numbers = [
-                    x for x in part.replace('"',' ').replace(':',' ').split()
-                    if x.replace('.','').isdigit()
-                ]
+        except:
 
-
-                if numbers:
-
-                    price = numbers[0]
-                    break
-
-
-
-
-
-    except:
-
-        pass
+            pass
 
 
 
@@ -78,7 +53,8 @@ for symbol in watchlist:
 
 
         message += f"📊 {symbol}\n"
-        message += f"💵 Price: {price}\n\n"
+        message += f"💵 Price: {price:.6f}\n\n"
+
 
 
     else:
@@ -92,8 +68,8 @@ for symbol in watchlist:
 
 
 
-message += "📰 OTC News\n\n"
 
+message += "📰 OTC News\n\n"
 
 
 
