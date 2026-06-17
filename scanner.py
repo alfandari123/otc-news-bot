@@ -7,11 +7,13 @@ import os
 API_KEY = os.getenv("ALPHA_KEY")
 
 
-with open("watchlist.json","r") as f:
+with open("watchlist.json", "r") as f:
     watchlist = json.load(f)
 
 
 message = "📈 OTC Scanner Update\n\n"
+
+alerts = []
 
 
 for symbol in watchlist:
@@ -20,7 +22,8 @@ for symbol in watchlist:
 
         url = (
             f"https://www.alphavantage.co/query?"
-            f"function=GLOBAL_QUOTE&symbol={symbol}"
+            f"function=GLOBAL_QUOTE"
+            f"&symbol={symbol}"
             f"&apikey={API_KEY}"
         )
 
@@ -34,41 +37,103 @@ for symbol in watchlist:
         change = quote.get("10. change percent")
 
 
-        if price:
+        if price and change:
 
-            message += f"🚀 {symbol}\n"
+
+            percent = float(
+                change.replace("%","")
+            )
+
+
+            if percent >= 10:
+
+                emoji = "🚀"
+                alerts.append(
+                    f"🚀 {symbol} +{change}"
+                )
+
+
+            elif percent <= -10:
+
+                emoji = "⚠️"
+                alerts.append(
+                    f"⚠️ {symbol} {change}"
+                )
+
+
+            else:
+
+                emoji = "📊"
+
+
+
+            message += f"{emoji} {symbol}\n"
             message += f"💵 Price: {price}\n"
             message += f"📊 Change: {change}\n\n"
 
+
         else:
 
-            message += f"⚠️ {symbol}\nNo price\n\n"
+
+            message += f"⚠️ {symbol}\n"
+            message += "No price data\n\n"
 
 
-    except:
 
-        message += f"⚠️ {symbol}\nError\n\n"
+    except Exception:
+
+
+        message += f"⚠️ {symbol}\n"
+        message += "Error\n\n"
+
 
 
 
 message += "📰 OTC News\n\n"
 
 
+
 for symbol in watchlist:
+
 
     news = feedparser.parse(
         f"https://news.google.com/rss/search?q={symbol}+OTC+stock"
     )
 
 
-    for item in news.entries[:2]:
+    if news.entries:
 
-        message += f"• {item.title}\n"
+
+        message += f"🔎 {symbol}\n"
+
+
+        for item in news.entries[:2]:
+
+            message += f"• {item.title}\n"
+
+
+        message += "\n"
+
+
+
+
+if alerts:
+
+
+    message += "\n🚨 ALERTS\n\n"
+
+
+    for alert in alerts:
+
+        message += alert + "\n"
+
 
 
 
 with open("telegram_message.txt","w") as f:
+
     f.write(message)
+
 
 
 print("Scanner finished")
