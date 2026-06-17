@@ -1,10 +1,13 @@
 import requests
 import feedparser
 import json
-import re
+import os
 
 
-with open("watchlist.json", "r") as f:
+API_KEY = os.getenv("ALPHA_KEY")
+
+
+with open("watchlist.json","r") as f:
     watchlist = json.load(f)
 
 
@@ -15,37 +18,34 @@ for symbol in watchlist:
 
     try:
 
-        url = f"https://www.otcmarkets.com/stock/{symbol}/quote"
-
-        r = requests.get(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            }
+        url = (
+            f"https://www.alphavantage.co/query?"
+            f"function=GLOBAL_QUOTE&symbol={symbol}"
+            f"&apikey={API_KEY}"
         )
 
-        html = r.text
+
+        data = requests.get(url).json()
+
+        quote = data.get("Global Quote", {})
 
 
-        price = re.search(
-            r'"last":"?([0-9.]+)',
-            html
-        )
+        price = quote.get("05. price")
+        change = quote.get("10. change percent")
 
 
         if price:
 
-            current_price = price.group(1)
-
             message += f"🚀 {symbol}\n"
-            message += f"💵 Price: {current_price}\n\n"
+            message += f"💵 Price: {price}\n"
+            message += f"📊 Change: {change}\n\n"
 
         else:
 
-            message += f"⚠️ {symbol}\nPrice unavailable\n\n"
+            message += f"⚠️ {symbol}\nNo price\n\n"
 
 
-    except Exception as e:
+    except:
 
         message += f"⚠️ {symbol}\nError\n\n"
 
@@ -61,19 +61,13 @@ for symbol in watchlist:
     )
 
 
-    if news.entries:
+    for item in news.entries[:2]:
 
-        message += f"🔎 {symbol}\n"
-
-        for item in news.entries[:2]:
-
-            message += f"• {item.title}\n"
-
-        message += "\n"
+        message += f"• {item.title}\n"
 
 
 
-with open("telegram_message.txt", "w") as f:
+with open("telegram_message.txt","w") as f:
     f.write(message)
 
 
