@@ -1,10 +1,6 @@
 import requests
 import feedparser
 import json
-import os
-
-
-API_KEY = os.getenv("ALPHA_KEY")
 
 
 with open("watchlist.json", "r") as f:
@@ -20,56 +16,85 @@ for symbol in watchlist:
 
     try:
 
-        url = (
+        price = None
+        change = None
+
+
+        # ניסיון ראשון - Alpha Vantage
+        av_url = (
             f"https://www.alphavantage.co/query?"
             f"function=GLOBAL_QUOTE"
             f"&symbol={symbol}"
-            f"&apikey={API_KEY}"
+            f"&apikey={__import__('os').getenv('ALPHA_KEY')}"
         )
 
 
-        data = requests.get(url).json()
+        av_data = requests.get(av_url).json()
 
-        quote = data.get("Global Quote", {})
+        quote = av_data.get("Global Quote", {})
 
 
         price = quote.get("05. price")
         change = quote.get("10. change percent")
 
 
-        if price and change:
 
+        # ניסיון שני - Yahoo OTC
+        if not price:
 
-            percent = float(
-                change.replace("%","")
+            yahoo_url = (
+                f"https://query1.finance.yahoo.com/v8/finance/chart/"
+                f"{symbol}.OB"
             )
 
 
-            if percent >= 10:
-
-                emoji = "🚀"
-                alerts.append(
-                    f"🚀 {symbol} +{change}"
-                )
+            yahoo_data = requests.get(yahoo_url).json()
 
 
-            elif percent <= -10:
-
-                emoji = "⚠️"
-                alerts.append(
-                    f"⚠️ {symbol} {change}"
-                )
+            result = yahoo_data.get("chart", {}).get("result")
 
 
-            else:
+            if result:
 
-                emoji = "📊"
+                meta = result[0].get("meta", {})
+
+                price = meta.get("regularMarketPrice")
 
 
 
-            message += f"{emoji} {symbol}\n"
+        if price:
+
+
+            message += f"📊 {symbol}\n"
             message += f"💵 Price: {price}\n"
-            message += f"📊 Change: {change}\n\n"
+
+
+            if change:
+
+                message += f"📈 Change: {change}\n"
+
+
+                percent = float(
+                    change.replace("%","")
+                )
+
+
+                if percent >= 10:
+
+                    alerts.append(
+                        f"🚀 {symbol} {change}"
+                    )
+
+
+                elif percent <= -10:
+
+                    alerts.append(
+                        f"⚠️ {symbol} {change}"
+                    )
+
+
+            message += "\n"
+
 
 
         else:
@@ -80,7 +105,7 @@ for symbol in watchlist:
 
 
 
-    except Exception:
+    except Exception as e:
 
 
         message += f"⚠️ {symbol}\n"
@@ -130,7 +155,7 @@ if alerts:
 
 
 
-with open("telegram_message.txt","w") as f:
+with open("telegram_message.txt", "w") as f:
 
     f.write(message)
 
