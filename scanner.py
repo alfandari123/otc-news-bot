@@ -1,7 +1,10 @@
 import requests
 import feedparser
 import json
-import re
+import os
+
+
+API_KEY = os.getenv("ALPHA_KEY")
 
 
 with open("watchlist.json", "r") as f:
@@ -11,52 +14,62 @@ with open("watchlist.json", "r") as f:
 message = "📈 OTC Scanner Update\n\n"
 
 
+
 for symbol in watchlist:
 
     try:
 
-        url = f"https://www.otcmarkets.com/stock/{symbol}/quote"
-
-        response = requests.get(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            }
-        )
+        price = None
+        change = None
 
 
-        html = response.text
+        symbols_to_try = [
+            symbol,
+            symbol + ".OB"
+        ]
 
 
-        price_match = re.search(
-            r'"lastPrice":([0-9.]+)',
-            html
-        )
+        for ticker in symbols_to_try:
 
 
-        if not price_match:
-
-            price_match = re.search(
-                r'"last":"([0-9.]+)"',
-                html
+            url = (
+                "https://www.alphavantage.co/query?"
+                f"function=GLOBAL_QUOTE"
+                f"&symbol={ticker}"
+                f"&apikey={API_KEY}"
             )
 
 
+            data = requests.get(url).json()
 
-        if price_match:
 
-            price = price_match.group(1)
+            quote = data.get("Global Quote", {})
+
+
+            if quote.get("05. price"):
+
+                price = quote.get("05. price")
+                change = quote.get("10. change percent")
+                break
+
+
+
+
+        if price:
 
 
             message += f"📊 {symbol}\n"
-            message += f"💵 Price: {price}\n\n"
+            message += f"💵 Price: {price}\n"
+            message += f"📈 Change: {change}\n\n"
 
 
 
         else:
 
+
             message += f"⚠️ {symbol}\n"
             message += "No price data\n\n"
+
 
 
 
@@ -69,7 +82,9 @@ for symbol in watchlist:
 
 
 
+
 message += "📰 OTC News\n\n"
+
 
 
 
@@ -93,6 +108,7 @@ for symbol in watchlist:
 
 
         message += "\n"
+
 
 
 
