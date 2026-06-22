@@ -4,8 +4,11 @@ import requests
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-with open("telegram_message.txt", "r") as f:
-    message = f.read()
+message = """
+📈 OTC Scanner Update
+
+🚀 Scanner Online
+"""
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
@@ -17,4 +20,4 @@ requests.post(
     }
 )
 
-print("Telegram message sent")
+print("Message sent")
