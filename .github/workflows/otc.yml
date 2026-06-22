@@ -53,7 +53,7 @@ jobs:
 
         run: |
 
-          python scanner.py
+          python market_scanner.py
 
 
 
