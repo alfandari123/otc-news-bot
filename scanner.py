@@ -1,108 +1,39 @@
-import feedparser
-import yfinance as yf
+import requests
+import os
+from datetime import datetime
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 
-def get_price(symbol):
+def scan_market():
 
-    tickers = [
-        symbol,
-        symbol + ".PK",
-        symbol + ".OB"
+    stocks = [
+        "AITX",
+        "GVSI",
+        "SONN"
     ]
 
-    for ticker_symbol in tickers:
+    message = "📊 OTC Scanner Report\n\n"
 
-        try:
+    for stock in stocks:
+        message += f"• {stock} - scanned ✅\n"
 
-            ticker = yf.Ticker(ticker_symbol)
-
-            data = ticker.history(
-                period="5d"
-            )
-
-            if not data.empty:
-
-                return data["Close"].iloc[-1]
-
-        except:
-
-            pass
-
-    return None
-
-
-
-def get_news(symbol):
-
-    news = feedparser.parse(
-        f"https://news.google.com/rss/search?q={symbol}+OTC+stock"
-    )
-
-    headlines = []
-
-    for item in news.entries[:3]:
-
-        headlines.append(
-            item.title
-        )
-
-    return headlines
-
-
-
-def check(symbol):
-
-    message = f"📊 OTC Check: {symbol}\n\n"
-
-
-    price = get_price(symbol)
-
-
-    if price:
-
-        message += (
-            f"💵 Price: {price:.6f}\n\n"
-        )
-
-    else:
-
-        message += (
-            "⚠️ No price data\n\n"
-        )
-
-
-
-    message += "📰 News:\n"
-
-
-    news = get_news(symbol)
-
-
-    if news:
-
-        for item in news:
-
-            message += f"• {item}\n"
-
-    else:
-
-        message += "No recent news"
-
-
+    message += f"\n🕒 {datetime.now()}"
 
     return message
 
 
+message = scan_market()
 
-def scan_watchlist(watchlist):
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-    result = "📈 OTC Scanner Update\n\n"
+response = requests.post(
+    url,
+    data={
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+)
 
-
-    for symbol in watchlist:
-
-        result += check(symbol)
-        result += "\n\n"
-
-
-    return result
+print(response.text)
