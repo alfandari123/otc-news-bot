@@ -1,37 +1,70 @@
 name: OTC Scanner
 
+
 on:
+
   workflow_dispatch:
 
+
   schedule:
+
     - cron: "*/15 * * * *"
+
 
 
 jobs:
 
+
   scan:
+
 
     runs-on: ubuntu-latest
 
 
+
     steps:
 
-      - name: Checkout
+
+      - name: Checkout repository
+
         uses: actions/checkout@v5
 
 
+
       - name: Setup Python
+
         uses: actions/setup-python@v6
 
         with:
+
           python-version: "3.12"
 
 
-      - name: Install requirements
+
+      - name: Install dependencies
+
         run: |
+
           pip install -r requirements.txt
 
 
-      - name: Run scanner
+
+      - name: Run OTC Scanner
+
         run: |
+
           python scanner.py
+
+
+
+      - name: Send Telegram Alert
+
+        run: |
+
+          python send_telegram.py
+
+        env:
+
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+
+          CHAT_ID: ${{ secrets.CHAT_ID }}
