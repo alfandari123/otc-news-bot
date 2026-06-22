@@ -61,7 +61,7 @@ jobs:
 
         run: |
 
-          python send_telegram.py
+          python market_scanner.py
 
         env:
 
