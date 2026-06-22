@@ -6,32 +6,32 @@ on:
   schedule:
     - cron: "*/15 * * * *"
 
+
 jobs:
+
   scan:
+
     runs-on: ubuntu-latest
 
+
     steps:
-      - uses: actions/checkout@v4
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
 
       - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+        uses: actions/setup-python@v6
 
-      - name: Install
+        with:
+          python-version: "3.12"
+
+
+      - name: Install requirements
         run: |
           pip install -r requirements.txt
 
-      - name: Run Scanner
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      - name: Run scanner
         run: |
           python scanner.py
-
-      - name: Send Telegram
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: |
-          python send_telegram.py
