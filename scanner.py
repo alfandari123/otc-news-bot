@@ -1,28 +1,14 @@
 import feedparser
-import json
 import yfinance as yf
 
 
-with open("watchlist.json", "r") as f:
-    watchlist = json.load(f)
-
-
-message = "📈 OTC Scanner Update\n\n"
-
-
-
-for symbol in watchlist:
-
-    price = None
-
+def get_price(symbol):
 
     tickers = [
         symbol,
         symbol + ".PK",
         symbol + ".OB"
     ]
-
-
 
     for ticker_symbol in tickers:
 
@@ -34,76 +20,89 @@ for symbol in watchlist:
                 period="5d"
             )
 
-
             if not data.empty:
 
-                price = data["Close"].iloc[-1]
-
-                break
-
+                return data["Close"].iloc[-1]
 
         except:
 
             pass
 
+    return None
 
 
 
-    if price:
-
-
-        message += f"📊 {symbol}\n"
-        message += f"💵 Price: {price:.6f}\n\n"
-
-
-
-    else:
-
-
-        message += f"⚠️ {symbol}\n"
-        message += "No price data\n\n"
-
-
-
-
-
-
-
-message += "📰 OTC News\n\n"
-
-
-
-
-for symbol in watchlist:
-
+def get_news(symbol):
 
     news = feedparser.parse(
         f"https://news.google.com/rss/search?q={symbol}+OTC+stock"
     )
 
+    headlines = []
 
-    if news.entries:
+    for item in news.entries[:3]:
 
+        headlines.append(
+            item.title
+        )
 
-        message += f"🔎 {symbol}\n"
-
-
-        for item in news.entries[:2]:
-
-            message += f"• {item.title}\n"
-
-
-        message += "\n"
+    return headlines
 
 
 
+def check(symbol):
+
+    message = f"📊 OTC Check: {symbol}\n\n"
+
+
+    price = get_price(symbol)
+
+
+    if price:
+
+        message += (
+            f"💵 Price: {price:.6f}\n\n"
+        )
+
+    else:
+
+        message += (
+            "⚠️ No price data\n\n"
+        )
 
 
 
-with open("telegram_message.txt","w") as f:
-
-    f.write(message)
+    message += "📰 News:\n"
 
 
+    news = get_news(symbol)
 
-print("Scanner finished")
+
+    if news:
+
+        for item in news:
+
+            message += f"• {item}\n"
+
+    else:
+
+        message += "No recent news"
+
+
+
+    return message
+
+
+
+def scan_watchlist(watchlist):
+
+    result = "📈 OTC Scanner Update\n\n"
+
+
+    for symbol in watchlist:
+
+        result += check(symbol)
+        result += "\n\n"
+
+
+    return result
