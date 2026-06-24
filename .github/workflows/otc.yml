@@ -53,8 +53,7 @@ jobs:
 
         run: |
 
-          python market_scanner.py
-
+          python otc_news.py
 
 
       - name: Send Telegram Alert
