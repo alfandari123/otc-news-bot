@@ -72,6 +72,23 @@ def load_watchlist():
 
 
 
+def get_price(symbol):
+
+    try:
+
+        stock = yf.Ticker(symbol)
+
+        price = stock.fast_info["last_price"]
+
+        return round(price, 6)
+
+
+    except:
+
+        return "N/A"
+
+
+
 def check_news(symbol, seen):
 
     url = f"https://news.google.com/rss/search?q={symbol}+stock"
@@ -90,22 +107,23 @@ def check_news(symbol, seen):
             continue
 
 
-        lower = title.lower()
-
+        text = title.lower()
 
         score = 0
 
 
         for word, points in GOOD_WORDS.items():
 
-            if word in lower:
+            if word in text:
+
                 score += points
 
 
 
         for bad in BAD_WORDS:
 
-            if bad in lower:
+            if bad in text:
+
                 score -= 5
 
 
@@ -149,12 +167,17 @@ def scanner():
 
         if news:
 
-            for n in news:
+            price = get_price(stock)
+
+
+            for item in news:
+
 
                 results.append(
                     f"📌 {stock}\n"
-                    f"⭐ Score: {n['score']}/10\n"
-                    f"• {n['title']}"
+                    f"⭐ Score: {item['score']}/10\n"
+                    f"💰 Price: {price}\n"
+                    f"• {item['title']}"
                 )
 
 
@@ -167,6 +190,7 @@ def scanner():
 
     if results:
 
+
         message = (
             "🚨 OTC QUALITY ALERT\n\n"
             +
@@ -175,7 +199,9 @@ def scanner():
             f"\n\n🕒 {datetime.now()}"
         )
 
+
         send_telegram(message)
+
 
 
     else:
