@@ -1,12 +1,18 @@
 import os
-import json
 import requests
+import feedparser
+import json
+from datetime import datetime
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 
-def send_telegram(message):
+NEWS_URL = "https://feeds.feedburner.com/otcmarkets/news"
+
+
+def send_telegram(text):
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
@@ -14,22 +20,55 @@ def send_telegram(message):
         url,
         data={
             "chat_id": CHAT_ID,
-            "text": message
+            "text": text
         }
     )
 
 
-watchlist = []
+def get_news():
 
-with open("watchlist.json", "r") as f:
-    watchlist = json.load(f)
+    feed = feedparser.parse(NEWS_URL)
+
+    good_words = [
+        "agreement",
+        "contract",
+        "acquisition",
+        "merger",
+        "approval",
+        "partnership",
+        "revenue",
+        "launch"
+    ]
+
+    alerts = []
+
+    for item in feed.entries[:20]:
+
+        title = item.title
+
+        if any(word.lower() in title.lower() for word in good_words):
+
+            alerts.append(title)
 
 
-message = "📈 OTC Watchlist\n\n"
+    return alerts
 
-for symbol in watchlist:
-    message += f"• {symbol}\n"
 
-send_telegram(message)
 
-print("Watchlist sent")
+news = get_news()
+
+
+if news:
+
+    message = "🚨 OTC NEWS ALERT\n\n"
+
+    for n in news:
+        message += f"• {n}\n\n"
+
+    message += f"🕒 {datetime.now()}"
+
+    send_telegram(message)
+
+else:
+
+    print("No important news found")
