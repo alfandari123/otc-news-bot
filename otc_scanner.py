@@ -21,7 +21,7 @@ def send_telegram(message):
     )
 
 
-def get_otc_news():
+def get_otc_data():
 
     url = "https://www.otcmarkets.com/research/stock-screener"
 
@@ -31,48 +31,49 @@ def get_otc_news():
 
     try:
 
-        r = requests.get(
+        response = requests.get(
             url,
             headers=headers,
             timeout=10
         )
 
         soup = BeautifulSoup(
-            r.text,
+            response.text,
             "html.parser"
         )
 
         text = soup.get_text(" ")
 
-        return text[:500]
+        return text
 
 
     except Exception as e:
 
-        return f"Error: {e}"
+        return str(e)
 
 
 
-def scanner():
+def scan_market():
 
-    data = get_otc_news()
+    data = get_otc_data()
 
 
-    positive_words = [
+    keywords = [
         "contract",
         "agreement",
         "acquisition",
         "merger",
         "approval",
         "partnership",
-        "revenue"
+        "revenue",
+        "launch"
     ]
 
 
     found = []
 
 
-    for word in positive_words:
+    for word in keywords:
 
         if word.lower() in data.lower():
 
@@ -82,14 +83,18 @@ def scanner():
 
     if found:
 
-
         message = (
             "🚨 OTC ALERT\n\n"
-            "Positive signals detected:\n\n"
-            + "\n".join(found)
-            +
-            f"\n\n🕒 {datetime.now()}"
+            "Positive signals found:\n\n"
         )
+
+
+        for item in found:
+
+            message += f"✅ {item}\n"
+
+
+        message += f"\n🕒 {datetime.now()}"
 
 
         send_telegram(message)
@@ -97,8 +102,14 @@ def scanner():
 
     else:
 
-        print("No important OTC events")
+
+        send_telegram(
+            "🔎 OTC Scanner checked\n\n"
+            "No important events found.\n"
+            "Scanner is active ✅\n\n"
+            f"🕒 {datetime.now()}"
+        )
 
 
 
-scanner()
+scan_market()
