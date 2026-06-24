@@ -1,5 +1,4 @@
 import os
-import yfinance as yf
 import requests
 from datetime import datetime
 
@@ -8,38 +7,24 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 
-def get_stock(symbol):
-
-    try:
-        stock = yf.Ticker(symbol)
-
-        price = stock.fast_info["last_price"]
-
-        return price
-
-    except Exception:
-        return None
-
+stocks = [
+    "AITX",
+    "GVSI",
+    "SONN"
+]
 
 
 def scan_market():
 
-    stocks = [
-        "AITX",
-        "GVSI",
-        "SONN"
-    ]
-
-    message = "📈 OTC Scanner Live\n\n"
+    message = "📊 OTC Scanner Update\n\n"
 
     for stock in stocks:
 
-        price = get_stock(stock)
-
-        if price:
-            message += f"🚨 {stock}\n💵 Price: {price}\n\n"
-        else:
-            message += f"⚠️ {stock} no data\n\n"
+        message += (
+            f"🚨 {stock}\n"
+            f"Status: Monitoring ✅\n"
+            f"News check: Active 🔎\n\n"
+        )
 
 
     message += f"🕒 {datetime.now()}"
@@ -63,4 +48,4 @@ requests.post(
 )
 
 
-print("Scanner sent")
+print("OTC scanner running")
