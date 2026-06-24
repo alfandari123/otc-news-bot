@@ -48,14 +48,35 @@ def send_telegram(message):
     )
 
 
+
+def load_json(file):
+
+    try:
+
+        with open(file, "r") as f:
+            return json.load(f)
+
+    except:
+
+        return []
+
+
+
+def save_json(file, data):
+
+    with open(file, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+
 def load_watchlist():
 
-    with open("watchlist.json", "r") as file:
-        return json.load(file)
+    with open("watchlist.json", "r") as f:
+        return json.load(f)
 
 
 
-def check_news(symbol):
+def check_news(symbol, seen):
 
     url = f"https://news.google.com/rss/search?q={symbol}+stock"
 
@@ -63,16 +84,37 @@ def check_news(symbol):
 
     results = []
 
+
     for item in feed.entries[:10]:
 
-        title = item.title.lower()
+        title = item.title
 
 
-        if any(word in title for word in GOOD_WORDS):
+        if title in seen:
+            continue
 
-            if not any(word in title for word in BAD_WORDS):
 
-                results.append(item.title)
+        title_lower = title.lower()
+
+
+        good = any(
+            word in title_lower
+            for word in GOOD_WORDS
+        )
+
+
+        bad = any(
+            word in title_lower
+            for word in BAD_WORDS
+        )
+
+
+        if good and not bad:
+
+            results.append(title)
+
+            seen.append(title)
+
 
 
     return results
@@ -83,21 +125,33 @@ def scanner():
 
     stocks = load_watchlist()
 
+    seen = load_json("seen_news.json")
+
+
     alerts = []
 
 
     for stock in stocks:
 
-        news = check_news(stock)
+        news = check_news(stock, seen)
+
 
         if news:
 
             alerts.append(
                 f"📌 {stock}\n" +
                 "\n".join(
-                    "• " + n for n in news
+                    "• " + n
+                    for n in news
                 )
             )
+
+
+
+    save_json(
+        "seen_news.json",
+        seen
+    )
 
 
 
@@ -114,9 +168,10 @@ def scanner():
         send_telegram(message)
 
 
+
     else:
 
-        print("No quality alerts")
+        print("No new quality alerts")
 
 
 
