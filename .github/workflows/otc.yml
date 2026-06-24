@@ -1,69 +1,33 @@
 name: OTC Scanner
 
-
 on:
+workflow_dispatch:
 
-  workflow_dispatch:
-
-
-  schedule:
-
-    - cron: "*/15 * * * *"
-
-
+schedule:
+- cron: "*/15 * * * *"
 
 jobs:
+scan:
+runs-on: ubuntu-latest
 
+```
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v5
 
-  scan:
+  - name: Setup Python
+    uses: actions/setup-python@v6
+    with:
+      python-version: "3.12"
 
+  - name: Install dependencies
+    run: |
+      pip install -r requirements.txt
 
-    runs-on: ubuntu-latest
-
-
-
-    steps:
-
-
-      - name: Checkout repository
-
-        uses: actions/checkout@v5
-
-
-
-      - name: Setup Python
-
-        uses: actions/setup-python@v6
-
-        with:
-
-          python-version: "3.12"
-
-
-
-      - name: Install dependencies
-
-        run: |
-
-          pip install -r requirements.txt
-
-
-
-      - name: Run OTC Scanner
-
-        run: |
-
-          python otc_news.py
-
-
-      - name: Send Telegram Alert
-
-        run: |
-
-          python otc_news.py
-          
-        env:
-
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-
-          CHAT_ID: ${{ secrets.CHAT_ID }}
+  - name: Run OTC Scanner
+    run: |
+      python otc_scanner.py
+    env:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      CHAT_ID: ${{ secrets.CHAT_ID }}
+```
