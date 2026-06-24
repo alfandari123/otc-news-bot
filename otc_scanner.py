@@ -2,7 +2,6 @@ import os
 import json
 import requests
 import feedparser
-import yfinance as yf
 from datetime import datetime
 
 
@@ -46,23 +45,19 @@ def send_telegram(message):
     )
 
 
-
 def load_json(file):
 
     try:
         with open(file, "r") as f:
             return json.load(f)
-
     except:
         return []
-
 
 
 def save_json(file, data):
 
     with open(file, "w") as f:
         json.dump(data, f, indent=2)
-
 
 
 def load_watchlist():
@@ -76,11 +71,21 @@ def get_price(symbol):
 
     try:
 
-        stock = yf.Ticker(symbol)
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}.OB"
 
-        price = stock.fast_info["last_price"]
+        response = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            },
+            timeout=10
+        )
 
-        return round(price, 6)
+        data = response.json()
+
+        price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+
+        return price
 
 
     except:
@@ -115,7 +120,6 @@ def check_news(symbol, seen):
         for word, points in GOOD_WORDS.items():
 
             if word in text:
-
                 score += points
 
 
@@ -123,7 +127,6 @@ def check_news(symbol, seen):
         for bad in BAD_WORDS:
 
             if bad in text:
-
                 score -= 5
 
 
@@ -172,14 +175,12 @@ def scanner():
 
             for item in news:
 
-
                 results.append(
                     f"📌 {stock}\n"
                     f"⭐ Score: {item['score']}/10\n"
                     f"💰 Price: {price}\n"
                     f"• {item['title']}"
                 )
-
 
 
     save_json(
@@ -190,8 +191,7 @@ def scanner():
 
     if results:
 
-
-        message = (
+        send_telegram(
             "🚨 OTC QUALITY ALERT\n\n"
             +
             "\n\n".join(results)
@@ -200,15 +200,9 @@ def scanner():
         )
 
 
-        send_telegram(message)
-
-
-
     else:
 
-        print(
-            "No high quality alerts"
-        )
+        print("No high quality alerts")
 
 
 
