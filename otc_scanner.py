@@ -24,8 +24,8 @@ def send_telegram(message):
 
 def load_watchlist():
 
-    with open("watchlist.json", "r") as f:
-        return json.load(f)
+    with open("watchlist.json", "r") as file:
+        return json.load(file)
 
 
 
@@ -35,30 +35,13 @@ def check_news(symbol):
 
     feed = feedparser.parse(url)
 
-    positive = [
-        "contract",
-        "agreement",
-        "merger",
-        "acquisition",
-        "partnership",
-        "approval",
-        "revenue",
-        "launch"
-    ]
+    news_list = []
 
-    alerts = []
+    for item in feed.entries[:5]:
 
-    for item in feed.entries[:10]:
+        news_list.append(item.title)
 
-        title = item.title
-
-        for word in positive:
-
-            if word.lower() in title.lower():
-
-                alerts.append(title)
-
-    return alerts
+    return news_list
 
 
 
@@ -80,9 +63,9 @@ def scanner():
 
             found = True
 
-            message += f"📌 {stock}\n\n"
+            message += f"📌 {stock}\n"
 
-            for n in news[:3]:
+            for n in news:
 
                 message += f"• {n}\n"
 
@@ -99,7 +82,12 @@ def scanner():
 
     else:
 
-        print("No important OTC news found")
+        send_telegram(
+            "🔎 OTC Scanner Check\n\n"
+            "No new important news found.\n"
+            "Scanner is running ✅\n\n"
+            f"🕒 {datetime.now()}"
+        )
 
 
 
