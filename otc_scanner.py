@@ -9,6 +9,32 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 
+GOOD_WORDS = [
+    "contract",
+    "partnership",
+    "acquisition",
+    "merger",
+    "approval",
+    "fda",
+    "revenue growth",
+    "new orders",
+    "agreement",
+    "expansion",
+    "launch"
+]
+
+
+BAD_WORDS = [
+    "price",
+    "chart",
+    "forecast",
+    "history",
+    "analysis",
+    "dilution",
+    "going concern"
+]
+
+
 def send_telegram(message):
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -35,13 +61,21 @@ def check_news(symbol):
 
     feed = feedparser.parse(url)
 
-    news_list = []
+    results = []
 
-    for item in feed.entries[:5]:
+    for item in feed.entries[:10]:
 
-        news_list.append(item.title)
+        title = item.title.lower()
 
-    return news_list
+
+        if any(word in title for word in GOOD_WORDS):
+
+            if not any(word in title for word in BAD_WORDS):
+
+                results.append(item.title)
+
+
+    return results
 
 
 
@@ -49,45 +83,40 @@ def scanner():
 
     stocks = load_watchlist()
 
-    message = "🚨 OTC Scanner Report\n\n"
-
-    found = False
+    alerts = []
 
 
     for stock in stocks:
 
         news = check_news(stock)
 
-
         if news:
 
-            found = True
-
-            message += f"📌 {stock}\n"
-
-            for n in news:
-
-                message += f"• {n}\n"
-
-            message += "\n"
+            alerts.append(
+                f"📌 {stock}\n" +
+                "\n".join(
+                    "• " + n for n in news
+                )
+            )
 
 
 
-    if found:
+    if alerts:
 
-        message += f"🕒 {datetime.now()}"
+        message = (
+            "🚨 OTC QUALITY ALERT\n\n"
+            +
+            "\n\n".join(alerts)
+            +
+            f"\n\n🕒 {datetime.now()}"
+        )
 
         send_telegram(message)
 
 
     else:
 
-        send_telegram(
-            "🔎 OTC Scanner Check\n\n"
-            "No new important news found.\n"
-            "Scanner is running ✅\n\n"
-            f"🕒 {datetime.now()}"
-        )
+        print("No quality alerts")
 
 
 
