@@ -1,17 +1,35 @@
-import feedparser
+import os
+import json
+import requests
 
-def get_otc_news():
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-    feed = feedparser.parse(
-        "https://www.otcmarkets.com/research/rss/news"
+
+def send_telegram(message):
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": message
+        }
     )
 
-    news = []
 
-    for entry in feed.entries[:10]:
+watchlist = []
 
-        title = entry.title
+with open("watchlist.json", "r") as f:
+    watchlist = json.load(f)
 
-        news.append(title)
 
-    return news
+message = "📈 OTC Watchlist\n\n"
+
+for symbol in watchlist:
+    message += f"• {symbol}\n"
+
+send_telegram(message)
+
+print("Watchlist sent")
