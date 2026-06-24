@@ -48,16 +48,13 @@ def send_telegram(message):
     )
 
 
-
 def load_json(file):
 
     try:
-
         with open(file, "r") as f:
             return json.load(f)
 
     except:
-
         return []
 
 
@@ -69,10 +66,16 @@ def save_json(file, data):
 
 
 
-def load_watchlist():
+def get_otc_stocks():
 
-    with open("watchlist.json", "r") as f:
-        return json.load(f)
+    try:
+
+        with open("watchlist.json", "r") as f:
+            return json.load(f)
+
+    except:
+
+        return []
 
 
 
@@ -94,17 +97,17 @@ def check_news(symbol, seen):
             continue
 
 
-        title_lower = title.lower()
+        lower = title.lower()
 
 
         good = any(
-            word in title_lower
+            word in lower
             for word in GOOD_WORDS
         )
 
 
         bad = any(
-            word in title_lower
+            word in lower
             for word in BAD_WORDS
         )
 
@@ -116,16 +119,17 @@ def check_news(symbol, seen):
             seen.append(title)
 
 
-
     return results
 
 
 
 def scanner():
 
-    stocks = load_watchlist()
+    stocks = get_otc_stocks()
 
-    seen = load_json("seen_news.json")
+    seen = load_json(
+        "seen_news.json"
+    )
 
 
     alerts = []
@@ -133,13 +137,17 @@ def scanner():
 
     for stock in stocks:
 
-        news = check_news(stock, seen)
+        news = check_news(
+            stock,
+            seen
+        )
 
 
         if news:
 
             alerts.append(
-                f"📌 {stock}\n" +
+                f"📌 {stock}\n"
+                +
                 "\n".join(
                     "• " + n
                     for n in news
@@ -147,12 +155,10 @@ def scanner():
             )
 
 
-
     save_json(
         "seen_news.json",
         seen
     )
-
 
 
     if alerts:
@@ -165,13 +171,15 @@ def scanner():
             f"\n\n🕒 {datetime.now()}"
         )
 
-        send_telegram(message)
 
+        send_telegram(message)
 
 
     else:
 
-        print("No new quality alerts")
+        print(
+            "No quality OTC alerts"
+        )
 
 
 
