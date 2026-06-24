@@ -1,6 +1,7 @@
 import os
+import json
 import requests
-from bs4 import BeautifulSoup
+import feedparser
 from datetime import datetime
 
 
@@ -21,95 +22,85 @@ def send_telegram(message):
     )
 
 
-def get_otc_data():
+def load_watchlist():
 
-    url = "https://www.otcmarkets.com/research/stock-screener"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    try:
-
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=10
-        )
-
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
-
-        text = soup.get_text(" ")
-
-        return text
-
-
-    except Exception as e:
-
-        return str(e)
+    with open("watchlist.json", "r") as f:
+        return json.load(f)
 
 
 
-def scan_market():
+def check_news(symbol):
 
-    data = get_otc_data()
+    url = f"https://news.google.com/rss/search?q={symbol}+stock"
 
+    feed = feedparser.parse(url)
 
-    keywords = [
+    positive = [
         "contract",
         "agreement",
-        "acquisition",
         "merger",
-        "approval",
+        "acquisition",
         "partnership",
+        "approval",
         "revenue",
         "launch"
     ]
 
+    alerts = []
 
-    found = []
+    for item in feed.entries[:10]:
+
+        title = item.title
+
+        for word in positive:
+
+            if word.lower() in title.lower():
+
+                alerts.append(title)
+
+    return alerts
 
 
-    for word in keywords:
 
-        if word.lower() in data.lower():
+def scanner():
 
-            found.append(word)
+    stocks = load_watchlist()
+
+    message = "🚨 OTC Scanner Report\n\n"
+
+    found = False
+
+
+    for stock in stocks:
+
+        news = check_news(stock)
+
+
+        if news:
+
+            found = True
+
+            message += f"📌 {stock}\n\n"
+
+            for n in news[:3]:
+
+                message += f"• {n}\n"
+
+            message += "\n"
 
 
 
     if found:
 
-        message = (
-            "🚨 OTC ALERT\n\n"
-            "Positive signals found:\n\n"
-        )
-
-
-        for item in found:
-
-            message += f"✅ {item}\n"
-
-
-        message += f"\n🕒 {datetime.now()}"
-
+        message += f"🕒 {datetime.now()}"
 
         send_telegram(message)
 
 
     else:
 
-
-        send_telegram(
-            "🔎 OTC Scanner checked\n\n"
-            "No important events found.\n"
-            "Scanner is active ✅\n\n"
-            f"🕒 {datetime.now()}"
-        )
+        print("No important OTC news found")
 
 
 
-scan_market()
+scanner()
