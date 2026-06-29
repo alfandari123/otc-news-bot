@@ -17,8 +17,11 @@ def get_otc_stocks():
         response = requests.get(
             url,
             headers=headers,
-            timeout=15
+            timeout=20
         )
+
+
+        print("Status:", response.status_code)
 
 
         data = response.json()
@@ -44,10 +47,12 @@ def get_otc_stocks():
 
     except Exception as e:
 
+
         print(
-            "Error:",
+            "ERROR:",
             e
         )
+
 
         return []
 
@@ -59,7 +64,8 @@ stocks = get_otc_stocks()
 
 
 print(
-    f"Found {len(stocks)} stocks"
+    "Found:",
+    len(stocks)
 )
 
 
