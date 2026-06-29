@@ -36,15 +36,12 @@ GOOD_WORDS = {
 
 
 BAD_WORDS = [
-
     "dilution",
     "going concern",
     "bankruptcy",
     "lawsuit",
     "reverse split"
-
 ]
-
 
 
 def send_telegram(message):
@@ -100,31 +97,88 @@ def load_watchlist():
 
 def get_market_data(symbol):
 
+
+    # ניסיון ראשון Yahoo Chart API
+
     try:
 
-        ticker = yf.Ticker(symbol)
+        url = (
+            f"https://query1.finance.yahoo.com/"
+            f"v8/finance/chart/{symbol}"
+        )
 
-        info = ticker.fast_info
+
+        response = requests.get(
+
+            url,
+
+            headers={
+                "User-Agent":
+                "Mozilla/5.0"
+            },
+
+            timeout=10
+
+        )
 
 
-        price = info.get(
-            "last_price",
+        data = response.json()
+
+
+        result = data["chart"]["result"][0]
+
+
+        price = result["meta"].get(
+            "regularMarketPrice",
             "N/A"
         )
 
 
-        volume = info.get(
-            "last_volume",
-            "N/A"
+        volume = (
+            result["indicators"]
+            ["quote"][0]
+            ["volume"][-1]
         )
 
 
         return price, volume
 
 
+
     except:
 
-        return "N/A", "N/A"
+
+
+        # ניסיון שני yfinance
+
+
+        try:
+
+            ticker = yf.Ticker(symbol)
+
+            info = ticker.fast_info
+
+
+            return (
+
+                info.get(
+                    "last_price",
+                    "N/A"
+                ),
+
+                info.get(
+                    "last_volume",
+                    "N/A"
+                )
+
+            )
+
+
+        except:
+
+
+            return "N/A", "N/A"
+
 
 
 
@@ -168,17 +222,21 @@ def check_news(symbol, seen):
 
         for word, points in GOOD_WORDS.items():
 
+
             if word in clean_title:
 
                 score += points
 
 
 
+
         for bad in BAD_WORDS:
+
 
             if bad in clean_title:
 
                 score -= 5
+
 
 
 
@@ -200,6 +258,7 @@ def check_news(symbol, seen):
 
 
     return alerts
+
 
 
 
@@ -277,17 +336,15 @@ def scanner():
         )
 
 
-        send_telegram(
-            message
-        )
+        send_telegram(message)
 
 
     else:
 
+
         print(
             "No high quality alerts"
         )
-
 
 
 
