@@ -81,3 +81,4 @@ with open(
         f,
         indent=2
     )
+print("OTC LIST UPDATED")
