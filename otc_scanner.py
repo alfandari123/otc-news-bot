@@ -10,7 +10,6 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 
 GOOD_WORDS = {
-    GOOD_WORDS = {
 
     "10-k": 4,
     "audited": 3,
@@ -33,20 +32,27 @@ GOOD_WORDS = {
     "expansion": 2,
     "launch": 2
 }
-}
 
 
 BAD_WORDS = [
+
     "dilution",
     "going concern",
     "bankruptcy",
-    "lawsuit"
+    "lawsuit",
+    "reverse split"
+
 ]
+
 
 
 def send_telegram(message):
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/sendMessage"
+    )
+
 
     requests.post(
         url,
@@ -58,6 +64,7 @@ def send_telegram(message):
 
 
 
+
 def load_json(file):
 
     try:
@@ -65,9 +72,11 @@ def load_json(file):
         with open(file, "r") as f:
             return json.load(f)
 
+
     except:
 
         return []
+
 
 
 
@@ -83,26 +92,17 @@ def save_json(file, data):
 
 
 
+
 def load_watchlist():
 
-    try:
+    with open(
+        "watchlist.json",
+        "r"
+    ) as f:
 
-        with open(
-            "otc_stocks.json",
-            "r"
-        ) as f:
-
-            return json.load(f)
+        return json.load(f)
 
 
-    except:
-
-        with open(
-            "watchlist.json",
-            "r"
-        ) as f:
-
-            return json.load(f)
 
 
 
@@ -117,11 +117,16 @@ def get_price(symbol):
 
 
         response = requests.get(
+
             url,
+
             headers={
-                "User-Agent": "Mozilla/5.0"
+                "User-Agent":
+                "Mozilla/5.0"
             },
+
             timeout=10
+
         )
 
 
@@ -146,7 +151,9 @@ def get_price(symbol):
 
 
 
+
 def check_news(symbol, seen):
+
 
     url = (
         f"https://news.google.com/rss/search?"
@@ -160,18 +167,24 @@ def check_news(symbol, seen):
     alerts = []
 
 
-    for item in feed.entries[:10]:
+
+    for item in feed.entries[:15]:
 
 
-        title = item.title
+        title = item.title.strip()
 
 
-        if title in seen:
+        clean_title = (
+            title
+            .lower()
+        )
+
+
+
+        if clean_title in seen:
+
             continue
 
-
-
-        text = title.lower()
 
 
         score = 0
@@ -180,17 +193,21 @@ def check_news(symbol, seen):
 
         for word, points in GOOD_WORDS.items():
 
-            if word in text:
+
+            if word in clean_title:
 
                 score += points
 
 
 
+
         for bad in BAD_WORDS:
 
-            if bad in text:
+
+            if bad in clean_title:
 
                 score -= 5
+
 
 
 
@@ -198,14 +215,18 @@ def check_news(symbol, seen):
 
 
             alerts.append(
+
                 {
                     "title": title,
                     "score": score
                 }
+
             )
 
 
-            seen.append(title)
+            seen.append(
+                clean_title
+            )
 
 
 
@@ -234,8 +255,11 @@ def scanner():
 
 
         news = check_news(
+
             stock,
+
             seen
+
         )
 
 
@@ -261,9 +285,13 @@ def scanner():
 
 
 
+
     save_json(
+
         "seen_news.json",
+
         seen
+
     )
 
 
@@ -274,9 +302,13 @@ def scanner():
         message = (
 
             "🚨 OTC QUALITY ALERT\n\n"
+
             +
+
             "\n\n".join(results)
+
             +
+
             f"\n\n🕒 {datetime.now()}"
 
         )
@@ -293,6 +325,7 @@ def scanner():
         print(
             "No high quality alerts"
         )
+
 
 
 
