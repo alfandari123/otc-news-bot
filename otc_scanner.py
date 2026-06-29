@@ -45,24 +45,39 @@ def send_telegram(message):
     )
 
 
+
 def load_json(file):
 
     try:
+
         with open(file, "r") as f:
             return json.load(f)
+
     except:
+
         return []
+
 
 
 def save_json(file, data):
 
     with open(file, "w") as f:
-        json.dump(data, f, indent=2)
+
+        json.dump(
+            data,
+            f,
+            indent=2
+        )
+
 
 
 def load_watchlist():
 
-    with open("watchlist.json", "r") as f:
+    with open(
+        "watchlist.json",
+        "r"
+    ) as f:
+
         return json.load(f)
 
 
@@ -71,7 +86,11 @@ def get_price(symbol):
 
     try:
 
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}.OB"
+        url = (
+            f"https://query1.finance.yahoo.com/"
+            f"v8/finance/chart/{symbol}"
+        )
+
 
         response = requests.get(
             url,
@@ -81,9 +100,17 @@ def get_price(symbol):
             timeout=10
         )
 
+
         data = response.json()
 
-        price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+
+        price = (
+            data["chart"]
+            ["result"][0]
+            ["meta"]
+            ["regularMarketPrice"]
+        )
+
 
         return price
 
@@ -94,16 +121,23 @@ def get_price(symbol):
 
 
 
+
 def check_news(symbol, seen):
 
-    url = f"https://news.google.com/rss/search?q={symbol}+stock"
+    url = (
+        f"https://news.google.com/rss/search?"
+        f"q={symbol}+stock"
+    )
+
 
     feed = feedparser.parse(url)
+
 
     alerts = []
 
 
     for item in feed.entries[:10]:
+
 
         title = item.title
 
@@ -112,14 +146,18 @@ def check_news(symbol, seen):
             continue
 
 
+
         text = title.lower()
 
+
         score = 0
+
 
 
         for word, points in GOOD_WORDS.items():
 
             if word in text:
+
                 score += points
 
 
@@ -127,11 +165,13 @@ def check_news(symbol, seen):
         for bad in BAD_WORDS:
 
             if bad in text:
+
                 score -= 5
 
 
 
         if score >= 4:
+
 
             alerts.append(
                 {
@@ -139,6 +179,7 @@ def check_news(symbol, seen):
                     "score": score
                 }
             )
+
 
             seen.append(title)
 
@@ -148,9 +189,13 @@ def check_news(symbol, seen):
 
 
 
+
+
 def scanner():
 
+
     stocks = load_watchlist()
+
 
     seen = load_json(
         "seen_news.json"
@@ -160,7 +205,9 @@ def scanner():
     results = []
 
 
+
     for stock in stocks:
+
 
         news = check_news(
             stock,
@@ -168,19 +215,26 @@ def scanner():
         )
 
 
+
         if news:
+
 
             price = get_price(stock)
 
 
+
             for item in news:
 
+
                 results.append(
+
                     f"📌 {stock}\n"
                     f"⭐ Score: {item['score']}/10\n"
                     f"💰 Price: {price}\n"
                     f"• {item['title']}"
+
                 )
+
 
 
     save_json(
@@ -189,20 +243,33 @@ def scanner():
     )
 
 
+
     if results:
 
-        send_telegram(
+
+        message = (
+
             "🚨 OTC QUALITY ALERT\n\n"
             +
             "\n\n".join(results)
             +
             f"\n\n🕒 {datetime.now()}"
+
+        )
+
+
+        send_telegram(
+            message
         )
 
 
     else:
 
-        print("No high quality alerts")
+
+        print(
+            "No high quality alerts"
+        )
+
 
 
 
