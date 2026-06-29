@@ -3,7 +3,7 @@ import json
 import requests
 import feedparser
 from datetime import datetime
-
+from market_data import get_market_data
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -267,7 +267,11 @@ def scanner():
         if news:
 
 
-            price = get_price(stock)
+            market = get_market_data(stock)
+
+price = market["price"]
+
+volume = market["volume"]
 
 
 
@@ -279,6 +283,7 @@ def scanner():
                     f"📌 {stock}\n"
                     f"⭐ Score: {item['score']}/10\n"
                     f"💰 Price: {price}\n"
+f"📊 Volume: {volume}\n"
                     f"• {item['title']}"
 
                 )
