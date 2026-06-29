@@ -73,12 +73,24 @@ def save_json(file, data):
 
 def load_watchlist():
 
-    with open(
-        "watchlist.json",
-        "r"
-    ) as f:
+    try:
 
-        return json.load(f)
+        with open(
+            "otc_stocks.json",
+            "r"
+        ) as f:
+
+            return json.load(f)
+
+
+    except:
+
+        with open(
+            "watchlist.json",
+            "r"
+        ) as f:
+
+            return json.load(f)
 
 
 
