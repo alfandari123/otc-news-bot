@@ -230,6 +230,7 @@ app.add_handler(
 
 
 
-app.run_polling()
-
 import otc_list
+
+
+app.run_polling()
