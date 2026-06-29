@@ -10,17 +10,29 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 
 GOOD_WORDS = {
+    GOOD_WORDS = {
+
+    "10-k": 4,
+    "audited": 3,
+    "filing": 2,
+
     "contract": 3,
     "partnership": 3,
-    "acquisition": 4,
+    "acquisition": 5,
     "merger": 5,
-    "approval": 4,
+
     "fda": 5,
-    "revenue growth": 3,
+    "approval": 4,
+
+    "revenue growth": 4,
+    "gross margin": 3,
+    "profit": 3,
+
     "new orders": 3,
     "agreement": 3,
     "expansion": 2,
     "launch": 2
+}
 }
 
 
