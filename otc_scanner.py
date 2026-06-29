@@ -2,8 +2,9 @@ import os
 import json
 import requests
 import feedparser
+import yfinance as yf
 from datetime import datetime
-from market_data import get_market_data
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -48,11 +49,7 @@ BAD_WORDS = [
 
 def send_telegram(message):
 
-    url = (
-        f"https://api.telegram.org/"
-        f"bot{BOT_TOKEN}/sendMessage"
-    )
-
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     requests.post(
         url,
@@ -64,7 +61,6 @@ def send_telegram(message):
 
 
 
-
 def load_json(file):
 
     try:
@@ -72,11 +68,9 @@ def load_json(file):
         with open(file, "r") as f:
             return json.load(f)
 
-
     except:
 
         return []
-
 
 
 
@@ -92,7 +86,6 @@ def save_json(file, data):
 
 
 
-
 def load_watchlist():
 
     with open(
@@ -105,48 +98,33 @@ def load_watchlist():
 
 
 
-
-def get_price(symbol):
+def get_market_data(symbol):
 
     try:
 
-        url = (
-            f"https://query1.finance.yahoo.com/"
-            f"v8/finance/chart/{symbol}"
+        ticker = yf.Ticker(symbol)
+
+        info = ticker.fast_info
+
+
+        price = info.get(
+            "last_price",
+            "N/A"
         )
 
 
-        response = requests.get(
-
-            url,
-
-            headers={
-                "User-Agent":
-                "Mozilla/5.0"
-            },
-
-            timeout=10
-
+        volume = info.get(
+            "last_volume",
+            "N/A"
         )
 
 
-        data = response.json()
-
-
-        price = (
-            data["chart"]
-            ["result"][0]
-            ["meta"]
-            ["regularMarketPrice"]
-        )
-
-
-        return price
+        return price, volume
 
 
     except:
 
-        return "N/A"
+        return "N/A", "N/A"
 
 
 
@@ -174,10 +152,7 @@ def check_news(symbol, seen):
         title = item.title.strip()
 
 
-        clean_title = (
-            title
-            .lower()
-        )
+        clean_title = title.lower()
 
 
 
@@ -193,21 +168,17 @@ def check_news(symbol, seen):
 
         for word, points in GOOD_WORDS.items():
 
-
             if word in clean_title:
 
                 score += points
 
 
 
-
         for bad in BAD_WORDS:
-
 
             if bad in clean_title:
 
                 score -= 5
-
 
 
 
@@ -224,9 +195,7 @@ def check_news(symbol, seen):
             )
 
 
-            seen.append(
-                clean_title
-            )
+            seen.append(clean_title)
 
 
 
@@ -255,11 +224,8 @@ def scanner():
 
 
         news = check_news(
-
             stock,
-
             seen
-
         )
 
 
@@ -267,11 +233,7 @@ def scanner():
         if news:
 
 
-            market = get_market_data(stock)
-
-price = market["price"]
-
-volume = market["volume"]
+            price, volume = get_market_data(stock)
 
 
 
@@ -283,20 +245,16 @@ volume = market["volume"]
                     f"📌 {stock}\n"
                     f"⭐ Score: {item['score']}/10\n"
                     f"💰 Price: {price}\n"
-f"📊 Volume: {volume}\n"
+                    f"📊 Volume: {volume}\n"
                     f"• {item['title']}"
 
                 )
 
 
 
-
     save_json(
-
         "seen_news.json",
-
         seen
-
     )
 
 
@@ -325,7 +283,6 @@ f"📊 Volume: {volume}\n"
 
 
     else:
-
 
         print(
             "No high quality alerts"
