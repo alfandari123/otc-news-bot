@@ -1,32 +1,77 @@
 import requests
+import json
 
 
 def get_otc_stocks():
 
-    url = "https://www.otcmarkets.com/research/stock-screener"
+    url = "https://www.otcmarkets.com/research/stock-screener/api/stock-screener"
+
 
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
 
 
-    response = requests.get(
-        url,
-        headers=headers,
-        timeout=10
-    )
+    try:
+
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=15
+        )
 
 
-    if response.status_code != 200:
+        data = response.json()
+
+
+        stocks = []
+
+
+        for item in data.get("data", []):
+
+            symbol = item.get("symbol")
+
+
+            if symbol:
+
+                stocks.append(symbol)
+
+
+
+        return stocks
+
+
+
+    except Exception as e:
+
+        print(
+            "Error:",
+            e
+        )
 
         return []
 
 
-    return []
 
 
 
 stocks = get_otc_stocks()
 
 
-print(stocks)
+print(
+    f"Found {len(stocks)} stocks"
+)
+
+
+
+with open(
+    "otc_stocks.json",
+    "w"
+) as f:
+
+
+    json.dump(
+        stocks,
+        f,
+        indent=2
+    )
