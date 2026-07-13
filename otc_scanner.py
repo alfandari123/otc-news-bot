@@ -11,40 +11,41 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 
 GOOD_WORDS = {
-
     "10-k": 4,
     "audited": 3,
     "filing": 2,
-
     "contract": 3,
     "partnership": 3,
     "acquisition": 5,
     "merger": 5,
-
     "fda": 5,
     "approval": 4,
-
-    "revenue growth": 4,
-    "gross margin": 3,
+    "revenue": 3,
     "profit": 3,
-
-    "new orders": 3,
+    "growth": 2,
+    "orders": 3,
     "agreement": 3,
     "expansion": 2,
     "launch": 2
 }
 
 
-BAD_WORDS = [
-    "dilution",
-    "going concern",
-    "bankruptcy",
-    "lawsuit",
-    "reverse split"
-]
+BAD_WORDS = {
+    "dilution": -5,
+    "reverse split": -5,
+    "bankruptcy": -10,
+    "going concern": -7,
+    "lawsuit": -5,
+    "offering": -4,
+    "toxic": -5
+}
 
 
 def send_telegram(message):
+
+    if not BOT_TOKEN or not CHAT_ID:
+        print("Telegram secrets missing")
+        return
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
@@ -53,7 +54,8 @@ def send_telegram(message):
         data={
             "chat_id": CHAT_ID,
             "text": message
-        }
+        },
+        timeout=10
     )
 
 
@@ -61,12 +63,10 @@ def send_telegram(message):
 def load_json(file):
 
     try:
-
         with open(file, "r") as f:
             return json.load(f)
 
     except:
-
         return []
 
 
@@ -74,7 +74,6 @@ def load_json(file):
 def save_json(file, data):
 
     with open(file, "w") as f:
-
         json.dump(
             data,
             f,
@@ -83,191 +82,119 @@ def save_json(file, data):
 
 
 
-def load_watchlist():
-
-    with open(
-        "watchlist.json",
-        "r"
-    ) as f:
-
-        return json.load(f)
-
-
-
-
 def get_market_data(symbol):
-
-
-    # ניסיון ראשון Yahoo Chart API
 
     try:
 
-        url = (
-            f"https://query1.finance.yahoo.com/"
-            f"v8/finance/chart/{symbol}"
-        )
+        ticker = yf.Ticker(symbol)
 
+        info = ticker.fast_info
 
-        response = requests.get(
-
-            url,
-
-            headers={
-                "User-Agent":
-                "Mozilla/5.0"
-            },
-
-            timeout=10
-
-        )
-
-
-        data = response.json()
-
-
-        result = data["chart"]["result"][0]
-
-
-        price = result["meta"].get(
-            "regularMarketPrice",
+        price = info.get(
+            "last_price",
             "N/A"
         )
 
-
-        volume = (
-            result["indicators"]
-            ["quote"][0]
-            ["volume"][-1]
+        volume = info.get(
+            "last_volume",
+            "N/A"
         )
-
 
         return price, volume
 
-
-
     except:
 
-
-
-        # ניסיון שני yfinance
-
-
-        try:
-
-            ticker = yf.Ticker(symbol)
-
-            info = ticker.fast_info
-
-
-            return (
-
-                info.get(
-                    "last_price",
-                    "N/A"
-                ),
-
-                info.get(
-                    "last_volume",
-                    "N/A"
-                )
-
-            )
-
-
-        except:
-
-
-            return "N/A", "N/A"
+        return "N/A", "N/A"
 
 
 
-
-
-
-def check_news(symbol, seen):
-
+def analyze_news(symbol, seen):
 
     url = (
-        f"https://news.google.com/rss/search?"
-        f"q={symbol}+stock"
+        "https://news.google.com/rss/search?"
+        f"q={symbol}+OTC+stock"
     )
 
 
     feed = feedparser.parse(url)
 
 
-    alerts = []
+    results = []
 
 
-
-    for item in feed.entries[:15]:
-
+    for item in feed.entries[:10]:
 
         title = item.title.strip()
 
-
-        clean_title = title.lower()
-
+        key = f"{symbol}_{title}".lower()
 
 
-        if clean_title in seen:
-
+        if key in seen:
             continue
 
 
+        text = title.lower()
 
         score = 0
 
 
-
         for word, points in GOOD_WORDS.items():
 
+            if word in text:
+                score += points
 
-            if word in clean_title:
 
+        for word, points in BAD_WORDS.items():
+
+            if word in text:
                 score += points
 
 
 
-
-        for bad in BAD_WORDS:
-
-
-            if bad in clean_title:
-
-                score -= 5
-
-
+        score = max(
+            0,
+            min(
+                score,
+                10
+            )
+        )
 
 
-        if score >= 4:
+        if score >= 5:
 
-
-            alerts.append(
-
+            results.append(
                 {
+                    "symbol": symbol,
                     "title": title,
                     "score": score
                 }
-
             )
 
 
-            seen.append(clean_title)
+            seen.append(key)
 
 
 
-    return alerts
-
-
+    return results
 
 
 
 
-def scanner():
+def run_scanner():
+
+    stocks = load_json(
+        "otc_stocks.json"
+    )
 
 
-    stocks = load_watchlist()
+    if not stocks:
+
+        print(
+            "No OTC list found"
+        )
+
+        return
+
 
 
     seen = load_json(
@@ -275,37 +202,41 @@ def scanner():
     )
 
 
-    results = []
+    alerts = []
 
 
+    # הגבלה כדי לא להיחסם
+    for symbol in stocks[:300]:
 
-    for stock in stocks:
-
-
-        news = check_news(
-            stock,
+        news = analyze_news(
+            symbol,
             seen
         )
 
 
-
         if news:
 
-
-            price, volume = get_market_data(stock)
-
+            price, volume = get_market_data(
+                symbol
+            )
 
 
             for item in news:
 
+                alerts.append(
 
-                results.append(
-
-                    f"📌 {stock}\n"
-                    f"⭐ Score: {item['score']}/10\n"
-                    f"💰 Price: {price}\n"
-                    f"📊 Volume: {volume}\n"
-                    f"• {item['title']}"
+                    "📌 " + item["symbol"]
+                    + "\n"
+                    + "⭐ Score: "
+                    + str(item["score"])
+                    + "/10\n"
+                    + "💰 Price: "
+                    + str(price)
+                    + "\n"
+                    + "📊 Volume: "
+                    + str(volume)
+                    + "\n📰 "
+                    + item["title"]
 
                 )
 
@@ -317,36 +248,34 @@ def scanner():
     )
 
 
-
-    if results:
-
+    if alerts:
 
         message = (
 
             "🚨 OTC QUALITY ALERT\n\n"
-
             +
-
-            "\n\n".join(results)
-
+            "\n\n".join(alerts[:10])
             +
-
-            f"\n\n🕒 {datetime.now()}"
+            "\n\n🕒 "
+            +
+            str(datetime.now())
 
         )
 
 
-        send_telegram(message)
+        send_telegram(
+            message
+        )
 
 
     else:
 
-
         print(
-            "No high quality alerts"
+            "No quality alerts"
         )
 
 
 
+if __name__ == "__main__":
 
-scanner()
+    run_scanner()
