@@ -48,15 +48,16 @@ def score(entries):
     pos = neg = 0
     reasons = []
     for e in entries:
-        title = e.get("title", "").lower()
-        p = sum(1 for x in POSITIVE if x in title)
-        n = sum(1 for x in NEGATIVE if x in title)
+        title = e.get("title", "")
+        lower = title.lower()
+        p = sum(1 for x in POSITIVE if x in lower)
+        n = sum(1 for x in NEGATIVE if x in lower)
         pos += p
         neg += n
         if p:
-            reasons.append("חדשה חיובית: " + e.get("title", "")[:180])
+            reasons.append("חדשה חיובית: " + title[:180])
         elif n:
-            reasons.append("⚠️ חדשות שליליות: " + e.get("title", "")[:180])
+            reasons.append("⚠️ חדשות שליליות: " + title[:180])
     value = max(0, min(100, 50 + pos * 12 - neg * 15))
     return value, reasons
 
@@ -77,19 +78,24 @@ def main():
 
     print(f"Loaded {len(symbols)} OTC symbols")
 
-    # Keep the free GitHub Actions run lightweight while still scanning a broad OTC universe.
-    # The list is refreshed by otc_list.py before this runner starts.
     for symbol in symbols[:300]:
         try:
             entries = news(symbol)
             s, reasons = score(entries)
             if s >= 74 or s <= 25:
                 emoji = "🚨🟢" if s >= 74 else "🚨🔴"
+                if s >= 74:
+                    direction = "איתות חיובי"
+                else:
+                    direction = "איתות שלילי"
+                details = "\n".join("• " + x for x in reasons[:4])
                 text = (
-                    f"{emoji} OTC M — התראה\n\n${symbol}\nציון: {s}/100\n\n"
-                    + "\n".join("• " + x for x in reasons[:4])
-                    + "\n\n⚠️ זה סורק מידע ואינו מבטיח עלייה או ירידה במניה."
-                    + f"\n🕒 {datetime.now(timezone.utc).isoformat()}"
+                    f"{emoji} OTC M — {direction}\n\n"
+                    f"מניה: ${symbol}\n"
+                    f"ציון: {s}/100\n\n"
+                    f"{details}\n\n"
+                    "⚠️ זהו סורק מידע בלבד ואינו מבטיח עלייה או ירידה במניה.\n"
+                    f"🕒 {datetime.now(timezone.utc).isoformat()}"
                 )
                 send(text[:3900])
         except Exception as exc:
