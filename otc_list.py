@@ -1,84 +1,59 @@
-import requests
 import json
+import time
+
+import requests
+
+
+URL = "https://www.otcmarkets.com/research/stock-screener/api"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
+    "Accept": "application/json,text/plain,*/*",
+    "Referer": "https://www.otcmarkets.com/research/stock-screener/",
+}
 
 
 def get_otc_stocks():
+    stocks = []
+    page = 1
 
-    url = "https://www.otcmarkets.com/research/stock-screener/api/stock-screener"
-
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-
-    try:
-
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=20
-        )
-
-
-        print("Status:", response.status_code)
-
-
+    while page <= 200:
+        params = {
+            "market": "1,10,20,30,40,21",
+            "pageSize": 100,
+            "page": page,
+        }
+        response = requests.get(URL, params=params, headers=HEADERS, timeout=30)
+        response.raise_for_status()
         data = response.json()
 
+        raw = data.get("stocks", [])
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if not isinstance(raw, list) or not raw:
+            break
 
-        stocks = []
-
-
-        for item in data.get("data", []):
-
-            symbol = item.get("symbol")
-
-
+        for item in raw:
+            if isinstance(item, dict):
+                symbol = item.get("symbol")
+            else:
+                symbol = item
             if symbol:
+                stocks.append(str(symbol).strip().upper())
 
-                stocks.append(symbol)
+        pages = int(data.get("pages", page))
+        if page >= pages:
+            break
+        page += 1
+        time.sleep(0.25)
 
-
-
-        return stocks
-
-
-
-    except Exception as e:
-
-
-        print(
-            "ERROR:",
-            e
-        )
-
-
-        return []
-
-
-
+    # Remove duplicates while preserving order.
+    return list(dict.fromkeys(stocks))
 
 
 stocks = get_otc_stocks()
+print("Found:", len(stocks))
 
+with open("otc_stocks.json", "w", encoding="utf-8") as f:
+    json.dump(stocks, f, indent=2)
 
-print(
-    "Found:",
-    len(stocks)
-)
-
-
-
-with open(
-    "otc_stocks.json",
-    "w"
-) as f:
-
-
-    json.dump(
-        stocks,
-        f,
-        indent=2
-    )
 print("OTC LIST UPDATED")
