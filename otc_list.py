@@ -2,137 +2,66 @@ import csv
 import io
 import json
 import time
-
 import requests
-
 
 API_URL = "https://www.otcmarkets.com/research/stock-screener/api"
 CSV_URL = "https://www.otcmarkets.com/research/stock-screener/api/downloadCSV"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
-    "Accept": "text/csv,application/json,text/plain,*/*",
-    "Referer": "https://www.otcmarkets.com/research/stock-screener/",
-}
+FINRA_URL = "https://api.finra.org/data/group/otcMarket/name/OTCDAILYLIST"
+HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "text/csv,application/json,text/plain,*/*"}
 MARKETS = "1,10,20,30,40,21"
-
+CACHE_FILE = "otc_stocks.json"
 
 def get_session():
-    session = requests.Session()
-    session.headers.update(HEADERS)
-    return session
+    s = requests.Session(); s.headers.update(HEADERS); return s
 
+def get_otc_stocks_from_csv(s):
+    r = s.get(CSV_URL, params={"market": MARKETS, "pageSize": 10000}, timeout=60); r.raise_for_status()
+    t = r.text.lstrip("\ufeff").strip()
+    if not t or "<html" in t[:500].lower() or "<!doctype" in t[:500].lower(): raise RuntimeError("OTC CSV unavailable")
+    rows = csv.DictReader(io.StringIO(t)); col = next((x for x in (rows.fieldnames or []) if x and x.strip().lower() in {"symbol", "ticker"}), None)
+    if not col: raise RuntimeError("OTC CSV has no Symbol/Ticker column")
+    return list(dict.fromkeys((x.get(col) or "").strip().upper() for x in rows if (x.get(col) or "").strip()))
 
-def get_otc_stocks_from_csv(session):
-    """Use OTC Markets' CSV download endpoint, which avoids the JSON decoding failure."""
-    params = {
-        "market": MARKETS,
-        "pageSize": 10000,
-    }
-    response = session.get(CSV_URL, params=params, timeout=60)
-    response.raise_for_status()
+def get_otc_stocks_from_json(s):
+    r = s.get(API_URL, params={"market": MARKETS, "pageSize": 10000, "page": 1}, timeout=30); r.raise_for_status()
+    try: d = r.json()
+    except requests.exceptions.JSONDecodeError as e: raise RuntimeError("OTC JSON unavailable") from e
+    raw = d.get("stocks", []); raw = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(raw, list): raise RuntimeError("Unexpected OTC JSON")
+    return list(dict.fromkeys(str(x.get("symbol") if isinstance(x, dict) else x).strip().upper() for x in raw if x))
 
-    content_type = response.headers.get("content-type", "").lower()
-    text = response.text.lstrip("\ufeff").strip()
+def get_otc_stocks_from_finra(s):
+    r = s.get(FINRA_URL, params={"limit": 10000}, timeout=60); r.raise_for_status(); d = r.json()
+    out = []
+    for x in d if isinstance(d, list) else []:
+        for k in ("newSymbolCode", "oldSymbolCode"):
+            if x.get(k): out.append(str(x[k]).strip().upper())
+    return list(dict.fromkeys(out))
 
-    # A successful response must actually contain CSV data, not an HTML error/challenge page.
-    if not text or "<html" in text[:500].lower() or "<!doctype" in text[:500].lower():
-        raise RuntimeError(
-            f"OTC CSV endpoint returned non-CSV data "
-            f"(status={response.status_code}, content-type={content_type}, "
-            f"preview={text[:150]!r})"
-        )
-
-    reader = csv.DictReader(io.StringIO(text))
-    if not reader.fieldnames:
-        raise RuntimeError("OTC CSV response has no header row")
-
-    symbol_column = next(
-        (name for name in reader.fieldnames if name and name.strip().lower() in {"symbol", "ticker"}),
-        None,
-    )
-    if not symbol_column:
-        raise RuntimeError(f"OTC CSV does not contain a Symbol/Ticker column: {reader.fieldnames}")
-
-    stocks = []
-    for row in reader:
-        symbol = (row.get(symbol_column) or "").strip().upper()
-        if symbol:
-            stocks.append(symbol)
-
-    return list(dict.fromkeys(stocks))
-
-
-def get_otc_stocks_from_json(session):
-    """Fallback to the screener JSON endpoint with retries and safe JSON handling."""
-    stocks = []
-    page = 1
-
-    while page <= 200:
-        params = {
-            "market": MARKETS,
-            "pageSize": 100,
-            "page": page,
-        }
-        response = session.get(API_URL, params=params, timeout=30)
-        response.raise_for_status()
-
-        try:
-            data = response.json()
-        except requests.exceptions.JSONDecodeError as exc:
-            preview = response.text[:200].replace("\n", " ")
-            raise RuntimeError(
-                f"OTC JSON endpoint returned non-JSON data "
-                f"(status={response.status_code}, content-type={response.headers.get('content-type')}, "
-                f"preview={preview!r})"
-            ) from exc
-
-        raw = data.get("stocks", [])
-        if isinstance(raw, str):
-            raw = json.loads(raw)
-        if not isinstance(raw, list) or not raw:
-            break
-
-        for item in raw:
-            symbol = item.get("symbol") if isinstance(item, dict) else item
-            if symbol:
-                stocks.append(str(symbol).strip().upper())
-
-        pages = int(data.get("pages", page))
-        if page >= pages:
-            break
-        page += 1
-        time.sleep(0.5)
-
-    return list(dict.fromkeys(stocks))
-
+def get_cached():
+    try:
+        with open(CACHE_FILE, encoding="utf-8") as f: d = json.load(f)
+        return list(dict.fromkeys(str(x).strip().upper() for x in d if x)) if isinstance(d, list) else []
+    except (OSError, ValueError, TypeError): return []
 
 def get_otc_stocks():
-    session = get_session()
-
-    # CSV is the primary path. The previous version failed because it assumed
-    # every response from the JSON endpoint was JSON.
-    try:
-        stocks = get_otc_stocks_from_csv(session)
-        if stocks:
-            return stocks
-        raise RuntimeError("OTC CSV returned zero symbols")
-    except Exception as csv_error:
-        print(f"CSV fetch failed: {csv_error}")
-        print("Trying OTC JSON endpoint as fallback...")
+    s = get_session(); errors = []
+    for name, fn in (("OTC CSV", get_otc_stocks_from_csv), ("OTC JSON", get_otc_stocks_from_json), ("FINRA", get_otc_stocks_from_finra)):
         try:
-            return get_otc_stocks_from_json(session)
-        except Exception as json_error:
-            raise RuntimeError(
-                "Could not retrieve OTC stock list from either OTC Markets endpoint. "
-                f"CSV error: {csv_error}; JSON error: {json_error}"
-            ) from json_error
-
+            stocks = fn(s)
+            if stocks:
+                print(f"Using {name}: {len(stocks)} symbols")
+                return stocks
+        except Exception as e:
+            errors.append(f"{name}: {e}"); print(f"{name} failed: {e}")
+        time.sleep(1)
+    cached = get_cached()
+    if cached:
+        print(f"Using cached OTC list: {len(cached)} symbols")
+        return cached
+    raise RuntimeError("No OTC source available: " + " | ".join(errors))
 
 if __name__ == "__main__":
-    stocks = get_otc_stocks()
-    print("Found:", len(stocks))
-
-    with open("otc_stocks.json", "w", encoding="utf-8") as f:
-        json.dump(stocks, f, indent=2)
-
+    stocks = get_otc_stocks(); print("Found:", len(stocks))
+    with open(CACHE_FILE, "w", encoding="utf-8") as f: json.dump(stocks, f, indent=2)
     print("OTC LIST UPDATED")
