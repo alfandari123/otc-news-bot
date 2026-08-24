@@ -1,15 +1,15 @@
 import csv
 import io
 import json
-import time
 import requests
 
-API_URL = "https://www.otcmarkets.com/research/stock-screener/api"
-CSV_URL = "https://www.otcmarkets.com/research/stock-screener/api/downloadCSV"
-FINRA_URL = "https://api.finra.org/data/group/otcMarket/name/OTCDAILYLIST"
-HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "text/csv,application/json,text/plain,*/*"}
-MARKETS = "1,10,20,30,40,21"
+# Primary source: a maintained public ticker database with an OTC venue column.
+# OTC Markets is kept as an optional secondary source, but the scanner no longer
+# depends on OTC Markets being available.
+BACKUP_URL = "https://raw.githubusercontent.com/adanos-software/free-ticker-database/main/data/listings.csv"
+OTC_CSV_URL = "https://www.otcmarkets.com/research/stock-screener/api/downloadCSV"
 CACHE_FILE = "otc_stocks.json"
+HEADERS = {"User-Agent": "otc-news-bot/1.0", "Accept": "text/csv,text/plain,*/*"}
 
 
 def get_session():
@@ -20,90 +20,89 @@ def get_session():
 
 def clean_symbols(values):
     out = []
+    seen = set()
     for value in values:
-        if value:
-            symbol = str(value).strip().upper()
-            if symbol and symbol not in out:
-                out.append(symbol)
+        symbol = str(value or "").strip().upper()
+        if symbol and symbol not in seen:
+            seen.add(symbol)
+            out.append(symbol)
     return out
 
 
-def get_otc_stocks_from_csv(s):
-    r = s.get(CSV_URL, params={"market": MARKETS, "pageSize": 10000}, timeout=60)
+def get_from_backup(s):
+    r = s.get(BACKUP_URL, timeout=90)
     r.raise_for_status()
-    t = r.text.lstrip("\ufeff").strip()
-    if not t or "<html" in t[:500].lower() or "<!doctype" in t[:500].lower():
-        raise RuntimeError("OTC CSV unavailable")
-    rows = csv.DictReader(io.StringIO(t))
-    col = next((x for x in (rows.fieldnames or []) if x and x.strip().lower() in {"symbol", "ticker"}), None)
-    if not col:
-        raise RuntimeError("OTC CSV has no Symbol/Ticker column")
-    return clean_symbols((row.get(col) for row in rows))
+    text = r.text.lstrip("\ufeff")
+    if not text or text.lstrip().lower().startswith("<!doctype") or "<html" in text[:500].lower():
+        raise RuntimeError("backup database returned HTML instead of CSV")
 
+    reader = csv.DictReader(io.StringIO(text))
+    fields = reader.fieldnames or []
+    ticker_col = next((x for x in fields if x and x.strip().lower() == "ticker"), None)
+    exchange_col = next((x for x in fields if x and x.strip().lower() == "exchange"), None)
+    asset_col = next((x for x in fields if x and x.strip().lower() == "asset_type"), None)
+    if not ticker_col or not exchange_col:
+        raise RuntimeError(f"backup CSV missing required columns: {fields[:10]}")
 
-def get_otc_stocks_from_json(s):
-    r = s.get(API_URL, params={"market": MARKETS, "pageSize": 10000, "page": 1}, timeout=30)
-    r.raise_for_status()
-    try:
-        d = r.json()
-    except requests.exceptions.JSONDecodeError as e:
-        raise RuntimeError("OTC JSON unavailable") from e
-    raw = d.get("stocks", [])
-    raw = json.loads(raw) if isinstance(raw, str) else raw
-    if not isinstance(raw, list):
-        raise RuntimeError("Unexpected OTC JSON")
-    return clean_symbols((x.get("symbol") if isinstance(x, dict) else x for x in raw))
-
-
-def get_otc_stocks_from_finra(s):
-    r = s.get(FINRA_URL, params={"limit": 10000}, timeout=60)
-    r.raise_for_status()
-    try:
-        d = r.json()
-    except requests.exceptions.JSONDecodeError as e:
-        raise RuntimeError("FINRA response was not JSON") from e
     symbols = []
-    for x in d if isinstance(d, list) else []:
-        if isinstance(x, dict):
-            symbols.extend((x.get("newSymbolCode"), x.get("oldSymbolCode")))
-    return clean_symbols(symbols)
+    for row in reader:
+        exchange = (row.get(exchange_col) or "").strip().upper()
+        asset = (row.get(asset_col) or "").strip().lower() if asset_col else ""
+        # Keep actual OTC stock listings, not ETFs or unrelated venues.
+        if exchange == "OTC" and (not asset_col or asset == "stock"):
+            symbols.append(row.get(ticker_col))
+
+    symbols = clean_symbols(symbols)
+    if len(symbols) < 100:
+        raise RuntimeError(f"backup database returned too few OTC symbols: {len(symbols)}")
+    return symbols
+
+
+def get_from_otc(s):
+    r = s.get(OTC_CSV_URL, params={"market": "1,10,20,30,40,21", "pageSize": 10000}, timeout=60)
+    r.raise_for_status()
+    text = r.text.lstrip("\ufeff").strip()
+    if not text or "<html" in text[:500].lower() or "<!doctype" in text[:500].lower():
+        raise RuntimeError("OTC Markets is temporarily unavailable")
+    reader = csv.DictReader(io.StringIO(text))
+    fields = reader.fieldnames or []
+    col = next((x for x in fields if x and x.strip().lower() in {"symbol", "ticker"}), None)
+    if not col:
+        raise RuntimeError("OTC Markets CSV has no Symbol/Ticker column")
+    symbols = clean_symbols(row.get(col) for row in reader)
+    if not symbols:
+        raise RuntimeError("OTC Markets returned zero symbols")
+    return symbols
 
 
 def get_cached():
     try:
         with open(CACHE_FILE, encoding="utf-8") as f:
-            d = json.load(f)
-        return clean_symbols(d if isinstance(d, list) else [])
+            data = json.load(f)
+        return clean_symbols(data) if isinstance(data, list) else []
     except (OSError, ValueError, TypeError):
         return []
 
 
 def get_otc_stocks():
     s = get_session()
-    errors = []
 
-    for name, fn in (
-        ("OTC CSV", get_otc_stocks_from_csv),
-        ("OTC JSON", get_otc_stocks_from_json),
-        ("FINRA", get_otc_stocks_from_finra),
-    ):
+    # Use the stable backup first. This prevents a temporary OTC Markets outage
+    # from stopping the scanner entirely.
+    for name, fn in (("backup database", get_from_backup), ("OTC Markets", get_from_otc)):
         try:
             stocks = fn(s)
-            if stocks:
-                print(f"Using {name}: {len(stocks)} symbols")
-                return stocks
-            raise RuntimeError("source returned zero symbols")
+            print(f"Using {name}: {len(stocks)} symbols")
+            return stocks
         except Exception as e:
-            errors.append(f"{name}: {e}")
             print(f"{name} failed: {e}")
-        time.sleep(1)
 
     cached = get_cached()
     if cached:
         print(f"Using cached OTC list: {len(cached)} symbols")
         return cached
 
-    raise RuntimeError("No OTC source available: " + " | ".join(errors))
+    raise RuntimeError("No OTC stock list is available from backup, OTC Markets, or cache")
 
 
 if __name__ == "__main__":
