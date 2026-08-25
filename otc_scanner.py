@@ -5,11 +5,11 @@ from email.utils import parsedate_to_datetime
 
 BOT_TOKEN=os.getenv("BOT_TOKEN"); CHAT_ID=os.getenv("CHAT_ID"); SEEN_FILE="seen_news.json"
 GITHUB_TOKEN=os.getenv("GITHUB_TOKEN"); GITHUB_REPOSITORY=os.getenv("GITHUB_REPOSITORY","alfandari123/otc-news-bot")
-GOOD={"10-k":4,"audited":3,"filing":2,"contract":4,"partnership":4,"acquisition":6,"merger":7,"fda":6,"approval":5,"revenue":3,"profit":4,"growth":3,"orders":4,"agreement":4,"expansion":3,"launch":3,"definitive agreement":7}
+GOOD={"10-k":4,"audited":3,"filing":2,"contract":4,"partnership":4,"acquisition":6,"merger":7,"fda":6,"approval":5,"revenue":3,"profit":4,"growth":3,"orders":4,"agreement":4,"expansion":3,"launch":3,"definitive agreement":7,"purchase agreement":6,"letter of intent":4,"milestone":4}
 FUTURE={"clinical":3,"trial":3,"phase":3,"pipeline":3,"development":2,"strategic":3,"potential":2,"explore":2,"intends":2,"plans":2,"expected":2}
 BAD={"dilution":-5,"reverse split":-5,"bankruptcy":-10,"going concern":-7,"lawsuit":-5,"offering":-4,"toxic":-5}
 MAX_AGE_HOURS=72
-
+MIN_ALERT_SCORE=4
 
 def send_telegram(msg):
     if not BOT_TOKEN or not CHAT_ID: print("חסרים פרטי חיבור לטלגרם"); return
@@ -57,10 +57,10 @@ def parse_date_value(v):
 
 def extract_source_date(url):
     try:
-        r=requests.get(url,timeout=15,headers={"User-Agent":"Mozilla/5.0 (compatible; OTC-M/6.2)"},allow_redirects=True)
+        r=requests.get(url,timeout=12,headers={"User-Agent":"Mozilla/5.0 (compatible; OTC-M/7.0)"},allow_redirects=True)
         if r.status_code!=200:return None,r.url
-        html=r.text[:2000000]; dates=[]
-        patterns=[r'<meta[^>]+(?:property|name)=["\'](?:article:published_time|datePublished|datepublished|publish(?:ed)?|publication_date|parsely-pub-date)["\'][^>]+content=["\']([^"\']+)',r'"datePublished"\s*:\s*"([^"]+)"',r'<time[^>]+datetime=["\']([^"\']+)["\']']
+        html=r.text[:1500000];dates=[]
+        patterns=[r'<meta[^>]+(?:property|name)=["\'](?:article:published_time|datePublished|publish(?:ed)?|publication_date|parsely-pub-date)["\'][^>]+content=["\']([^"\']+)',r'"datePublished"\s*:\s*"([^"]+)"',r'<time[^>]+datetime=["\']([^"\']+)["\']']
         for p in patterns:
             for x in re.findall(p,html,re.I):
                 d=parse_date_value(x)
@@ -79,7 +79,7 @@ def discover_news(symbol):
     entries=[];seen=set()
     for u in urls:
         try:
-            for e in feedparser.parse(requests.get(u,timeout=15,headers={"User-Agent":"OTC-M/6.2"}).content).entries[:20]:
+            for e in feedparser.parse(requests.get(u,timeout=12,headers={"User-Agent":"OTC-M/7.0"}).content).entries[:20]:
                 key=e.get("link","") or e.get("title","")
                 if key and key not in seen:seen.add(key);entries.append(e)
         except Exception as e:print(f"שגיאה באיתור חדשות {symbol}: {e}")
@@ -88,22 +88,22 @@ def discover_news(symbol):
 def score(title,age):
     t=title.lower();s=sum(p for w,p in GOOD.items() if w in t)+sum(p for w,p in FUTURE.items() if w in t)+sum(p for w,p in BAD.items() if w in t)
     if age<=24:s+=2
-    elif age>48:s-=2
+    elif age>48:s-=1
     return max(0,min(10,s))
 
 def classify(title,s):
     t=title.lower()
-    if s>=8 and any(x in t for x in ["merger","acquisition","fda approval","approved","definitive agreement","contract","revenue","profit","orders"]):return "🟢 חדשות חיוביות מאוד","אירוע משמעותי שעשוי להשפיע בטווח הקצר"
+    if s>=8 and any(x in t for x in ["merger","acquisition","fda approval","approved","definitive agreement","contract","revenue","profit","orders","purchase agreement"]):return "🟢 חדשות חיוביות מאוד","אירוע משמעותי שעשוי להשפיע בטווח הקצר"
     if any(x in t for x in FUTURE) or s>=5:return "🟡 חדשות עם פוטנציאל עתידי","אירוע שעשוי להיות חיובי בהמשך אך עדיין אינו ודאי"
     return "🔵 חדשות למעקב","מידע שדורש בדיקה ומעקב"
 
 def sec_verify(symbol):
     try:
-        h={"User-Agent":"OTC-M verification bot contact: otc-news-bot@example.com"};sub=requests.get("https://www.sec.gov/files/company_tickers.json",headers=h,timeout=15).json();cik=None
+        h={"User-Agent":"OTC-M verification bot contact: otc-news-bot@example.com"};sub=requests.get("https://www.sec.gov/files/company_tickers.json",headers=h,timeout=12).json();cik=None
         for v in sub.values():
             if str(v.get("ticker","")).upper()==symbol:cik=str(v["cik_str"]).zfill(10);break
         if not cik:return False,"לא נמצא טיקר ב-SEC",""
-        url=f"https://data.sec.gov/submissions/CIK{cik}.json";data=requests.get(url,headers=h,timeout=15).json();recent=data.get("filings",{}).get("recent",{});forms=recent.get("form",[]);dates=recent.get("filingDate",[]);cutoff=(datetime.now(timezone.utc)-timedelta(days=7)).date().isoformat();ok=any(i<len(dates) and f in ["8-K","10-Q","10-K","6-K","20-F"] and dates[i]>=cutoff for i,f in enumerate(forms));return ok,"נמצא דיווח רשמי ב-SEC" if ok else "לא נמצא דיווח רשמי עדכני ב-SEC",url
+        url=f"https://data.sec.gov/submissions/CIK{cik}.json";data=requests.get(url,headers=h,timeout=12).json();recent=data.get("filings",{}).get("recent",{});forms=recent.get("form",[]);dates=recent.get("filingDate",[]);cutoff=(datetime.now(timezone.utc)-timedelta(days=7)).date().isoformat();ok=any(i<len(dates) and f in ["8-K","10-Q","10-K","6-K","20-F"] and dates[i]>=cutoff for i,f in enumerate(forms));return ok,"נמצא דיווח רשמי ב-SEC" if ok else "לא נמצא דיווח רשמי עדכני ב-SEC",url
     except:return False,"SEC אינו זמין כרגע",""
 
 def run_scanner():
@@ -113,7 +113,8 @@ def run_scanner():
     if not stocks:print("לא נמצאה רשימת מניות OTC");return
     state=load_state();today=datetime.now(timezone.utc).date().isoformat();day=state.setdefault(today,{})
     alerts=[];stats={"מניות":0,"מועמדי RSS":0,"ללא קישור":0,"ללא תאריך מקור":0,"ישנות":0,"כפולות":0,"ציון נמוך":0,"מועמדים":0}
-    for raw in stocks[:300]:
+    scan_stocks=stocks[:750]
+    for raw in scan_stocks:
         stats["מניות"]+=1;symbol=str(raw).upper().strip()
         if not symbol:continue
         for item in discover_news(symbol):
@@ -126,7 +127,7 @@ def run_scanner():
             ticker=day.setdefault(symbol,{});ident=source_url.lower();ev=event_key(title)
             if ident in ticker or any(isinstance(v,dict) and v.get("event")==ev for v in ticker.values()):stats["כפולות"]+=1;continue
             s=score(title,age);ticker[ident]={"event":ev,"title":title,"published":source_dt.isoformat(),"source":source_url}
-            if s<5:stats["ציון נמוך"]+=1;continue
+            if s<MIN_ALERT_SCORE:stats["ציון נמוך"]+=1;continue
             stats["מועמדים"]+=1
             verified,src,securl=sec_verify(symbol);label,meaning=classify(title,s)
             try:info=yf.Ticker(symbol).fast_info;price=info.get("last_price","לא זמין");vol=info.get("last_volume","לא זמין")
@@ -137,9 +138,9 @@ def run_scanner():
     best={}
     for s,sym,msg in alerts:
         if sym not in best or s>best[sym][0]:best[sym]=(s,msg)
-    selected=sorted(best.values(),reverse=True)[:5]
-    for _,msg in selected:send_telegram("🇮🇱 OTC M — איתות חדש\n\n"+msg+"\n\n🕒 זמן בדיקה: "+datetime.now().strftime("%d/%m/%Y %H:%M"))
-    print("OTC-M v6.2 — סיכום סריקה:",json.dumps(stats,ensure_ascii=False))
-    print(f"OTC-M v6.2: מועמדים שעברו סינון: {stats['מועמדים']} | איתותים שנשלחו: {len(selected)}")
+    selected=sorted(((s,sym,msg) for sym,(s,msg) in best.items()),reverse=True)[:5]
+    for _,_,msg in selected:send_telegram("🇮🇱 OTC M — איתות חדש\n\n"+msg+"\n\n🕒 זמן בדיקה: "+datetime.now().strftime("%d/%m/%Y %H:%M"))
+    print("OTC-M v7.0 — סיכום סריקה:",json.dumps(stats,ensure_ascii=False))
+    print(f"OTC-M v7.0: מועמדים שעברו סינון: {stats['מועמדים']} | איתותים שנשלחו: {len(selected)}")
 
 if __name__=="__main__":run_scanner()
