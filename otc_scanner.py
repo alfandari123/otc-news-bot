@@ -2,6 +2,7 @@ import os, json, requests, feedparser, yfinance as yf, re, base64
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 from email.utils import parsedate_to_datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BOT_TOKEN=os.getenv("BOT_TOKEN"); CHAT_ID=os.getenv("CHAT_ID"); SEEN_FILE="seen_news.json"
 GITHUB_TOKEN=os.getenv("GITHUB_TOKEN"); GITHUB_REPOSITORY=os.getenv("GITHUB_REPOSITORY","alfandari123/otc-news-bot")
@@ -10,6 +11,7 @@ FUTURE={"clinical":3,"trial":3,"phase":3,"pipeline":3,"development":2,"strategic
 BAD={"dilution":-5,"reverse split":-5,"bankruptcy":-10,"going concern":-7,"lawsuit":-5,"offering":-4,"toxic":-5}
 MAX_AGE_HOURS=72
 MIN_ALERT_SCORE=4
+MAX_STOCKS_PER_SCAN=750
 
 def send_telegram(msg):
     if not BOT_TOKEN or not CHAT_ID: print("חסרים פרטי חיבור לטלגרם"); return
@@ -83,7 +85,7 @@ def discover_news(symbol):
                 key=e.get("link","") or e.get("title","")
                 if key and key not in seen:seen.add(key);entries.append(e)
         except Exception as e:print(f"שגיאה באיתור חדשות {symbol}: {e}")
-    return entries[:25]
+    return symbol,entries[:25]
 
 def score(title,age):
     t=title.lower();s=sum(p for w,p in GOOD.items() if w in t)+sum(p for w,p in FUTURE.items() if w in t)+sum(p for w,p in BAD.items() if w in t)
@@ -112,28 +114,34 @@ def run_scanner():
     except:stocks=[]
     if not stocks:print("לא נמצאה רשימת מניות OTC");return
     state=load_state();today=datetime.now(timezone.utc).date().isoformat();day=state.setdefault(today,{})
-    alerts=[];stats={"מניות":0,"מועמדי RSS":0,"ללא קישור":0,"ללא תאריך מקור":0,"ישנות":0,"כפולות":0,"ציון נמוך":0,"מועמדים":0}
-    scan_stocks=stocks[:750]
-    for raw in scan_stocks:
-        stats["מניות"]+=1;symbol=str(raw).upper().strip()
-        if not symbol:continue
-        for item in discover_news(symbol):
+    discovery=[]
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        futures=[pool.submit(discover_news,str(raw).upper().strip()) for raw in stocks[:MAX_STOCKS_PER_SCAN] if str(raw).strip()]
+        for f in as_completed(futures):
+            try:discovery.append(f.result())
+            except Exception:pass
+    stats={"מניות שנסרקו":len(discovery),"מועמדי RSS":0,"עם תאריך מקור":0,"חדשות טריות":0,"ישנות":0,"ללא תאריך":0,"כפולות":0,"ציון נמוך":0,"מועמדים לאיתות":0}
+    qualified=[]
+    for symbol,entries in discovery:
+        for item in entries:
             stats["מועמדי RSS"]+=1;title=item.get("title","").strip();rss_url=item.get("link","").strip()
-            if not title or not rss_url:stats["ללא קישור"]+=1;continue
+            if not title or not rss_url:continue
             source_dt,source_url=extract_source_date(rss_url)
-            if not source_dt:stats["ללא תאריך מקור"]+=1;continue
-            age=(datetime.now(timezone.utc)-source_dt).total_seconds()/3600
+            if not source_dt:stats["ללא תאריך"]+=1;continue
+            stats["עם תאריך מקור"]+=1;age=(datetime.now(timezone.utc)-source_dt).total_seconds()/3600
             if age<0 or age>MAX_AGE_HOURS:stats["ישנות"]+=1;continue
-            ticker=day.setdefault(symbol,{});ident=source_url.lower();ev=event_key(title)
+            stats["חדשות טריות"]+=1;ticker=day.setdefault(symbol,{});ident=source_url.lower();ev=event_key(title)
             if ident in ticker or any(isinstance(v,dict) and v.get("event")==ev for v in ticker.values()):stats["כפולות"]+=1;continue
             s=score(title,age);ticker[ident]={"event":ev,"title":title,"published":source_dt.isoformat(),"source":source_url}
             if s<MIN_ALERT_SCORE:stats["ציון נמוך"]+=1;continue
-            stats["מועמדים"]+=1
-            verified,src,securl=sec_verify(symbol);label,meaning=classify(title,s)
-            try:info=yf.Ticker(symbol).fast_info;price=info.get("last_price","לא זמין");vol=info.get("last_volume","לא זמין")
-            except:price=vol="לא זמין"
-            msg=(f"{label}\n\n💲 מניה: {symbol}\n⭐ ציון: {s*10}/100\n🕒 פורסם במקור: {source_dt.strftime('%d/%m/%Y %H:%M')} UTC\n\n📰 אירוע:\n{title}\n\n🔗 קישור למקור:\n{source_url}\n\n🛡️ מקור רשמי: {src}\n"+(f"🔗 קישור SEC:\n{securl}\n\n" if verified else "\n")+f"💰 מחיר: {price}\n📊 מחזור: {vol}\n\n💡 משמעות: {meaning}\n\n⚠️ מידע לצורכי בדיקה בלבד. אינו המלצה להשקעה ואינו מבטיח עלייה או ירידה.")
-            alerts.append((s,symbol,msg))
+            stats["מועמדים לאיתות"]+=1;qualified.append((s,symbol,title,source_dt,source_url))
+    alerts=[]
+    for s,symbol,title,source_dt,source_url in qualified:
+        verified,src,securl=sec_verify(symbol);label,meaning=classify(title,s)
+        try:info=yf.Ticker(symbol).fast_info;price=info.get("last_price","לא זמין");vol=info.get("last_volume","לא זמין")
+        except:price=vol="לא זמין"
+        msg=(f"{label}\n\n💲 מניה: {symbol}\n⭐ ציון: {s*10}/100\n🕒 פורסם במקור: {source_dt.strftime('%d/%m/%Y %H:%M')} UTC\n\n📰 אירוע:\n{title}\n\n🔗 קישור למקור:\n{source_url}\n\n🛡️ מקור רשמי: {src}\n"+(f"🔗 קישור SEC:\n{securl}\n\n" if verified else "\n")+f"💰 מחיר: {price}\n📊 מחזור: {vol}\n\n💡 משמעות: {meaning}\n\n⚠️ מידע לצורכי בדיקה בלבד. אינו המלצה להשקעה ואינו מבטיח עלייה או ירידה.")
+        alerts.append((s,symbol,msg))
     state={k:state[k] for k in list(state)[-14:]};persist_state(state)
     best={}
     for s,sym,msg in alerts:
@@ -141,6 +149,7 @@ def run_scanner():
     selected=sorted(((s,sym,msg) for sym,(s,msg) in best.items()),reverse=True)[:5]
     for _,_,msg in selected:send_telegram("🇮🇱 OTC M — איתות חדש\n\n"+msg+"\n\n🕒 זמן בדיקה: "+datetime.now().strftime("%d/%m/%Y %H:%M"))
     print("OTC-M v7.0 — סיכום סריקה:",json.dumps(stats,ensure_ascii=False))
-    print(f"OTC-M v7.0: מועמדים שעברו סינון: {stats['מועמדים']} | איתותים שנשלחו: {len(selected)}")
+    print(f"OTC-M v7.0: מועמדים שעברו סינון: {stats['מועמדים לאיתות']} | איתותים שנשלחו: {len(selected)}")
+    if stats["חדשות טריות"] and not selected:print("⚠️ נמצאו חדשות טריות אך לא נבחר איתות; בדוק את ציון הסף.")
 
 if __name__=="__main__":run_scanner()
