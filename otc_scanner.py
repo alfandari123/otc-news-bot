@@ -6,16 +6,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BOT_TOKEN=os.getenv("BOT_TOKEN"); CHAT_ID=os.getenv("CHAT_ID"); SEEN_FILE="seen_news.json"
 GITHUB_TOKEN=os.getenv("GITHUB_TOKEN"); GITHUB_REPOSITORY=os.getenv("GITHUB_REPOSITORY","alfandari123/otc-news-bot")
-GOOD={"10-k":4,"audited":3,"filing":2,"contract":4,"partnership":4,"acquisition":6,"merger":7,"fda":6,"approval":5,"revenue":3,"profit":4,"growth":3,"orders":4,"agreement":4,"expansion":3,"launch":3,"definitive agreement":7,"purchase agreement":6,"letter of intent":4,"milestone":4}
-FUTURE={"clinical":3,"trial":3,"phase":3,"pipeline":3,"development":2,"strategic":3,"potential":2,"explore":2,"intends":2,"plans":2,"expected":2}
+GOOD={"contract":4,"partnership":4,"acquisition":6,"merger":7,"fda":6,"approval":5,"approved":5,"revenue":3,"profit":4,"growth":3,"orders":4,"agreement":4,"expansion":3,"launch":3,"definitive agreement":7,"purchase agreement":6,"milestone":4,"strategic mou":2}
+FUTURE={"clinical":3,"trial":3,"phase":3,"pipeline":3,"development":2,"strategic":2,"potential":2,"explore":2,"intends":2,"plans":2,"expected":2}
 BAD={"dilution":-5,"reverse split":-5,"bankruptcy":-10,"going concern":-7,"lawsuit":-5,"offering":-4,"toxic":-5}
 MAX_AGE_HOURS=72
-MIN_ALERT_SCORE=4
+MIN_ALERT_SCORE=3
 MAX_STOCKS_PER_SCAN=750
+MAX_NEWS_PER_SYMBOL=8
+SOURCE_CHECK_WORKERS=12
 
 def send_telegram(msg):
     if not BOT_TOKEN or not CHAT_ID: print("חסרים פרטי חיבור לטלגרם"); return
-    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",data={"chat_id":CHAT_ID,"text":msg,"disable_web_page_preview":False},timeout=15).raise_for_status()
+    r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",data={"chat_id":CHAT_ID,"text":msg,"disable_web_page_preview":False},timeout=15);r.raise_for_status()
 
 def load_local():
     try:
@@ -31,10 +33,9 @@ def load_state():
     if d:return d
     if not GITHUB_TOKEN:return {}
     try:
-        u=f"https://api.github.com/repos/{GITHUB_REPOSITORY}/contents/{SEEN_FILE}"
-        r=requests.get(u,headers={"Authorization":f"Bearer {GITHUB_TOKEN}","Accept":"application/vnd.github+json"},timeout=15)
+        u=f"https://api.github.com/repos/{GITHUB_REPOSITORY}/contents/{SEEN_FILE}";r=requests.get(u,headers={"Authorization":f"Bearer {GITHUB_TOKEN}","Accept":"application/vnd.github+json"},timeout=10)
         if r.status_code==200:
-            remote=json.loads(base64.b64decode(r.json()["content"]).decode("utf-8")); return remote if isinstance(remote,dict) else {}
+            remote=json.loads(base64.b64decode(r.json()["content"]).decode());return remote if isinstance(remote,dict) else {}
     except Exception as e:print(f"שגיאה בטעינת היסטוריה: {e}")
     return {}
 
@@ -42,11 +43,9 @@ def persist_state(d):
     save_local(d)
     if not GITHUB_TOKEN:return
     try:
-        h={"Authorization":f"Bearer {GITHUB_TOKEN}","Accept":"application/vnd.github+json"};u=f"https://api.github.com/repos/{GITHUB_REPOSITORY}/contents/{SEEN_FILE}"
-        old=requests.get(u,headers=h,timeout=15);payload={"message":"Update persistent OTC alert state","content":base64.b64encode(json.dumps(d,indent=2,ensure_ascii=False).encode()).decode()}
+        h={"Authorization":f"Bearer {GITHUB_TOKEN}","Accept":"application/vnd.github+json"};u=f"https://api.github.com/repos/{GITHUB_REPOSITORY}/contents/{SEEN_FILE}";old=requests.get(u,headers=h,timeout=10);payload={"message":"Update persistent OTC alert state","content":base64.b64encode(json.dumps(d,indent=2,ensure_ascii=False).encode()).decode()}
         if old.status_code==200:payload["sha"]=old.json()["sha"]
-        r=requests.put(u,headers=h,json=payload,timeout=15)
-        if r.status_code not in (200,201):print(f"שמירת היסטוריה ב-GitHub נכשלה: {r.status_code} {r.text[:200]}")
+        requests.put(u,headers=h,json=payload,timeout=10)
     except Exception as e:print(f"שגיאה בשמירת היסטוריה: {e}")
 
 def parse_date_value(v):
@@ -59,33 +58,33 @@ def parse_date_value(v):
 
 def extract_source_date(url):
     try:
-        r=requests.get(url,timeout=12,headers={"User-Agent":"Mozilla/5.0 (compatible; OTC-M/7.0)"},allow_redirects=True)
+        r=requests.get(url,timeout=7,headers={"User-Agent":"Mozilla/5.0 (compatible; OTC-M/7.1)"},allow_redirects=True)
         if r.status_code!=200:return None,r.url
-        html=r.text[:1500000];dates=[]
+        html=r.text[:900000];dates=[]
         patterns=[r'<meta[^>]+(?:property|name)=["\'](?:article:published_time|datePublished|publish(?:ed)?|publication_date|parsely-pub-date)["\'][^>]+content=["\']([^"\']+)',r'"datePublished"\s*:\s*"([^"]+)"',r'<time[^>]+datetime=["\']([^"\']+)["\']']
         for p in patterns:
             for x in re.findall(p,html,re.I):
                 d=parse_date_value(x)
                 if d:dates.append(d)
         return (min(dates),r.url) if dates else (None,r.url)
-    except Exception as e:print(f"שגיאה בבדיקת תאריך מקור: {e}");return None,url
+    except Exception:return None,url
 
-def canonical(text):return re.sub(r"[^a-z0-9]+"," ",text.lower()).strip()
-def event_key(title):
-    t=canonical(title)
+def event_key(text):
+    t=re.sub(r"[^a-z0-9]+"," ",text.lower())
     for w in ["allied energy corporation","afc energy plc","otc","stock","corp","corporation","plc","company","announces","announcement"]:t=t.replace(w," ")
     return " ".join(t.split())
 
 def discover_news(symbol):
-    urls=[f'https://news.google.com/rss/search?q={quote(f"{symbol} OTC stock when:3d")}&hl=en-US&gl=US&ceid=US:en',f'https://news.google.com/rss/search?q={quote(f"{symbol} company news when:3d")}&hl=en-US&gl=US&ceid=US:en']
     entries=[];seen=set()
-    for u in urls:
+    queries=[f"{symbol} OTC stock when:3d",f"{symbol} company news when:3d",f"{symbol} merger acquisition contract FDA when:3d"]
+    for q in queries:
         try:
-            for e in feedparser.parse(requests.get(u,timeout=12,headers={"User-Agent":"OTC-M/7.0"}).content).entries[:20]:
+            u=f'https://news.google.com/rss/search?q={quote(q)}&hl=en-US&gl=US&ceid=US:en';r=requests.get(u,timeout=6,headers={"User-Agent":"OTC-M/7.1"});feed=feedparser.parse(r.content)
+            for e in feed.entries[:12]:
                 key=e.get("link","") or e.get("title","")
                 if key and key not in seen:seen.add(key);entries.append(e)
-        except Exception as e:print(f"שגיאה באיתור חדשות {symbol}: {e}")
-    return symbol,entries[:25]
+        except Exception:pass
+    return symbol,entries[:MAX_NEWS_PER_SYMBOL]
 
 def score(title,age):
     t=title.lower();s=sum(p for w,p in GOOD.items() if w in t)+sum(p for w,p in FUTURE.items() if w in t)+sum(p for w,p in BAD.items() if w in t)
@@ -101,55 +100,74 @@ def classify(title,s):
 
 def sec_verify(symbol):
     try:
-        h={"User-Agent":"OTC-M verification bot contact: otc-news-bot@example.com"};sub=requests.get("https://www.sec.gov/files/company_tickers.json",headers=h,timeout=12).json();cik=None
+        h={"User-Agent":"OTC-M verification bot contact: otc-news-bot@example.com"};sub=requests.get("https://www.sec.gov/files/company_tickers.json",headers=h,timeout=6).json();cik=None
         for v in sub.values():
             if str(v.get("ticker","")).upper()==symbol:cik=str(v["cik_str"]).zfill(10);break
         if not cik:return False,"לא נמצא טיקר ב-SEC",""
-        url=f"https://data.sec.gov/submissions/CIK{cik}.json";data=requests.get(url,headers=h,timeout=12).json();recent=data.get("filings",{}).get("recent",{});forms=recent.get("form",[]);dates=recent.get("filingDate",[]);cutoff=(datetime.now(timezone.utc)-timedelta(days=7)).date().isoformat();ok=any(i<len(dates) and f in ["8-K","10-Q","10-K","6-K","20-F"] and dates[i]>=cutoff for i,f in enumerate(forms));return ok,"נמצא דיווח רשמי ב-SEC" if ok else "לא נמצא דיווח רשמי עדכני ב-SEC",url
+        url=f"https://data.sec.gov/submissions/CIK{cik}.json";data=requests.get(url,headers=h,timeout=6).json();recent=data.get("filings",{}).get("recent",{});forms=recent.get("form",[]);dates=recent.get("filingDate",[]);cutoff=(datetime.now(timezone.utc)-timedelta(days=7)).date().isoformat();ok=any(i<len(dates) and f in ["8-K","10-Q","10-K","6-K","20-F"] and dates[i]>=cutoff for i,f in enumerate(forms));return ok,"נמצא דיווח רשמי ב-SEC" if ok else "לא נמצא דיווח רשמי עדכני ב-SEC",url
     except:return False,"SEC אינו זמין כרגע",""
 
 def run_scanner():
     try:
         with open("otc_stocks.json",encoding="utf-8") as f:stocks=json.load(f)
-    except:stocks=[]
+    except Exception as e:print(f"שגיאה ברשימת OTC: {e}");return
     if not stocks:print("לא נמצאה רשימת מניות OTC");return
     state=load_state();today=datetime.now(timezone.utc).date().isoformat();day=state.setdefault(today,{})
+    stocks=[str(x).upper().strip() for x in stocks if str(x).strip()][:MAX_STOCKS_PER_SCAN]
     discovery=[]
     with ThreadPoolExecutor(max_workers=20) as pool:
-        futures=[pool.submit(discover_news,str(raw).upper().strip()) for raw in stocks[:MAX_STOCKS_PER_SCAN] if str(raw).strip()]
-        for f in as_completed(futures):
+        fs=[pool.submit(discover_news,s) for s in stocks]
+        for f in as_completed(fs):
             try:discovery.append(f.result())
-            except Exception:pass
+            except:pass
     stats={"מניות שנסרקו":len(discovery),"מועמדי RSS":0,"עם תאריך מקור":0,"חדשות טריות":0,"ישנות":0,"ללא תאריך":0,"כפולות":0,"ציון נמוך":0,"מועמדים לאיתות":0}
-    qualified=[]
+    candidates=[];events=set()
+    # שלב מהיר: קודם רק RSS metadata, ורק מועמדים עוברים לפתיחת מקור
     for symbol,entries in discovery:
         for item in entries:
-            stats["מועמדי RSS"]+=1;title=item.get("title","").strip();rss_url=item.get("link","").strip()
-            if not title or not rss_url:continue
-            source_dt,source_url=extract_source_date(rss_url)
-            if not source_dt:stats["ללא תאריך"]+=1;continue
-            stats["עם תאריך מקור"]+=1;age=(datetime.now(timezone.utc)-source_dt).total_seconds()/3600
-            if age<0 or age>MAX_AGE_HOURS:stats["ישנות"]+=1;continue
-            stats["חדשות טריות"]+=1;ticker=day.setdefault(symbol,{});ident=source_url.lower();ev=event_key(title)
-            if ident in ticker or any(isinstance(v,dict) and v.get("event")==ev for v in ticker.values()):stats["כפולות"]+=1;continue
-            s=score(title,age);ticker[ident]={"event":ev,"title":title,"published":source_dt.isoformat(),"source":source_url}
-            if s<MIN_ALERT_SCORE:stats["ציון נמוך"]+=1;continue
-            stats["מועמדים לאיתות"]+=1;qualified.append((s,symbol,title,source_dt,source_url))
+            stats["מועמדי RSS"]+=1;title=item.get("title","").strip();url=item.get("link","").strip()
+            if not title or not url:continue
+            rss_dt=parse_date_value(item.get("published") or item.get("updated"))
+            if rss_dt and (datetime.now(timezone.utc)-rss_dt).total_seconds()>72*3600:stats["ישנות"]+=1;continue
+            candidates.append((symbol,title,url))
+    # שלב אימות מקורות במקביל — מוגבל בזמן כדי שה-Action לא ייתקע
+    def verify(c):
+        symbol,title,url=c;dt,final=extract_source_date(url);return symbol,title,url,dt,final
+    with ThreadPoolExecutor(max_workers=SOURCE_CHECK_WORKERS) as pool:
+        fs=[pool.submit(verify,c) for c in candidates]
+        for f in as_completed(fs):
+            try:
+                symbol,title,url,dt,final=f.result()
+                if not dt:stats["ללא תאריך"]+=1;continue
+                stats["עם תאריך מקור"]+=1;age=(datetime.now(timezone.utc)-dt).total_seconds()/3600
+                if age<0 or age>MAX_AGE_HOURS:stats["ישנות"]+=1;continue
+                stats["חדשות טריות"]+=1;ident=final.lower();ev=event_key(title)
+                if ident in day or ev in events or any(isinstance(v,dict) and v.get("event")==ev for v in day.values()):stats["כפולות"]+=1;continue
+                s=score(title,age);day[ident]={"event":ev,"title":title,"published":dt.isoformat(),"source":final};events.add(ev)
+                if s<MIN_ALERT_SCORE:stats["ציון נמוך"]+=1;continue
+                stats["מועמדים לאיתות"]+=1;candidates_for_alert=(s,symbol,title,dt,final);yield_candidate= candidates_for_alert
+                # store on function attribute-like list through outer scope
+                qualified.append(yield_candidate)
+            except Exception:pass
+    persist_state(state)
     alerts=[]
-    for s,symbol,title,source_dt,source_url in qualified:
-        verified,src,securl=sec_verify(symbol);label,meaning=classify(title,s)
-        try:info=yf.Ticker(symbol).fast_info;price=info.get("last_price","לא זמין");vol=info.get("last_volume","לא זמין")
+    for s,symbol,title,dt,url in qualified:
+        verified,src,securl=sec_verify(symbol)
+        label,meaning=classify(title,s)
+        try:
+            info=yf.Ticker(symbol).fast_info;price=info.get("last_price","לא זמין");vol=info.get("last_volume","לא זמין")
         except:price=vol="לא זמין"
-        msg=(f"{label}\n\n💲 מניה: {symbol}\n⭐ ציון: {s*10}/100\n🕒 פורסם במקור: {source_dt.strftime('%d/%m/%Y %H:%M')} UTC\n\n📰 אירוע:\n{title}\n\n🔗 קישור למקור:\n{source_url}\n\n🛡️ מקור רשמי: {src}\n"+(f"🔗 קישור SEC:\n{securl}\n\n" if verified else "\n")+f"💰 מחיר: {price}\n📊 מחזור: {vol}\n\n💡 משמעות: {meaning}\n\n⚠️ מידע לצורכי בדיקה בלבד. אינו המלצה להשקעה ואינו מבטיח עלייה או ירידה.")
+        msg=(f"{label}\n\n💲 מניה: {symbol}\n⭐ ציון: {s*10}/100\n🕒 פורסם במקור: {dt.strftime('%d/%m/%Y %H:%M')} UTC\n\n📰 אירוע:\n{title}\n\n🔗 קישור למקור:\n{url}\n\n🛡️ מקור רשמי: {src}\n"+(f"🔗 קישור SEC:\n{securl}\n\n" if verified else "\n")+f"💰 מחיר: {price}\n📊 מחזור: {vol}\n\n💡 משמעות: {meaning}\n\n⚠️ מידע לצורכי בדיקה בלבד. אינו המלצה להשקעה ואינו מבטיח עלייה או ירידה.")
         alerts.append((s,symbol,msg))
-    state={k:state[k] for k in list(state)[-14:]};persist_state(state)
     best={}
     for s,sym,msg in alerts:
         if sym not in best or s>best[sym][0]:best[sym]=(s,msg)
     selected=sorted(((s,sym,msg) for sym,(s,msg) in best.items()),reverse=True)[:5]
-    for _,_,msg in selected:send_telegram("🇮🇱 OTC M — איתות חדש\n\n"+msg+"\n\n🕒 זמן בדיקה: "+datetime.now().strftime("%d/%m/%Y %H:%M"))
-    print("OTC-M v7.0 — סיכום סריקה:",json.dumps(stats,ensure_ascii=False))
-    print(f"OTC-M v7.0: מועמדים שעברו סינון: {stats['מועמדים לאיתות']} | איתותים שנשלחו: {len(selected)}")
-    if stats["חדשות טריות"] and not selected:print("⚠️ נמצאו חדשות טריות אך לא נבחר איתות; בדוק את ציון הסף.")
+    for _,_,msg in selected:send_telegram("🇮🇱 OTC M — איתות חדש\n\n"+msg+"\n\n🕒 זמן בדיקה: "+datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"))
+    print("OTC-M v7.2 — סיכום:",json.dumps(stats,ensure_ascii=False))
+    print(f"מועמדים שעברו סינון: {stats['מועמדים לאיתות']} | איתותים שנשלחו: {len(selected)}")
+    if stats["חדשות טריות"] and not selected:print("⚠️ נמצאו חדשות טריות אך אף אחת לא עברה את ציון הסף.")
 
-if __name__=="__main__":run_scanner()
+if __name__=="__main__":
+    qualified=[]
+    run_scanner()
