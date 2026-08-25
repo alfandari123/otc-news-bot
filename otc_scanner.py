@@ -8,7 +8,8 @@ GITHUB_TOKEN=os.getenv("GITHUB_TOKEN"); GITHUB_REPOSITORY=os.getenv("GITHUB_REPO
 GOOD={"10-k":4,"audited":3,"filing":2,"contract":4,"partnership":4,"acquisition":6,"merger":7,"fda":6,"approval":5,"revenue":3,"profit":4,"growth":3,"orders":4,"agreement":4,"expansion":3,"launch":3,"definitive agreement":7}
 FUTURE={"clinical":3,"trial":3,"phase":3,"pipeline":3,"development":2,"strategic":3,"potential":2,"explore":2,"intends":2,"plans":2,"expected":2}
 BAD={"dilution":-5,"reverse split":-5,"bankruptcy":-10,"going concern":-7,"lawsuit":-5,"offering":-4,"toxic":-5}
-MAX_AGE_HOURS=48
+MAX_AGE_HOURS=72
+
 
 def send_telegram(msg):
     if not BOT_TOKEN or not CHAT_ID: print("חסרים פרטי חיבור לטלגרם"); return
@@ -17,8 +18,7 @@ def send_telegram(msg):
 def load_local():
     try:
         with open(SEEN_FILE,encoding="utf-8") as f:
-            d=json.load(f)
-            return d if isinstance(d,dict) else {}
+            d=json.load(f); return d if isinstance(d,dict) else {}
     except:return {}
 
 def save_local(d):
@@ -32,8 +32,7 @@ def load_state():
         u=f"https://api.github.com/repos/{GITHUB_REPOSITORY}/contents/{SEEN_FILE}"
         r=requests.get(u,headers={"Authorization":f"Bearer {GITHUB_TOKEN}","Accept":"application/vnd.github+json"},timeout=15)
         if r.status_code==200:
-            remote=json.loads(base64.b64decode(r.json()["content"]).decode("utf-8"))
-            return remote if isinstance(remote,dict) else {}
+            remote=json.loads(base64.b64decode(r.json()["content"]).decode("utf-8")); return remote if isinstance(remote,dict) else {}
     except Exception as e:print(f"שגיאה בטעינת היסטוריה: {e}")
     return {}
 
@@ -41,10 +40,8 @@ def persist_state(d):
     save_local(d)
     if not GITHUB_TOKEN:return
     try:
-        h={"Authorization":f"Bearer {GITHUB_TOKEN}","Accept":"application/vnd.github+json"}
-        u=f"https://api.github.com/repos/{GITHUB_REPOSITORY}/contents/{SEEN_FILE}"
-        old=requests.get(u,headers=h,timeout=15)
-        payload={"message":"Update persistent OTC alert state","content":base64.b64encode(json.dumps(d,indent=2,ensure_ascii=False).encode()).decode()}
+        h={"Authorization":f"Bearer {GITHUB_TOKEN}","Accept":"application/vnd.github+json"};u=f"https://api.github.com/repos/{GITHUB_REPOSITORY}/contents/{SEEN_FILE}"
+        old=requests.get(u,headers=h,timeout=15);payload={"message":"Update persistent OTC alert state","content":base64.b64encode(json.dumps(d,indent=2,ensure_ascii=False).encode()).decode()}
         if old.status_code==200:payload["sha"]=old.json()["sha"]
         r=requests.put(u,headers=h,json=payload,timeout=15)
         if r.status_code not in (200,201):print(f"שמירת היסטוריה ב-GitHub נכשלה: {r.status_code} {r.text[:200]}")
@@ -52,8 +49,7 @@ def persist_state(d):
 
 def parse_date_value(v):
     if not v:return None
-    v=str(v).strip()
-    for fn in (lambda x:datetime.fromisoformat(x.replace("Z","+00:00")),parsedate_to_datetime):
+    for fn in (lambda x:datetime.fromisoformat(str(x).replace("Z","+00:00")),parsedate_to_datetime):
         try:
             d=fn(v);return d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d.astimezone(timezone.utc)
         except:pass
@@ -61,11 +57,10 @@ def parse_date_value(v):
 
 def extract_source_date(url):
     try:
-        r=requests.get(url,timeout=15,headers={"User-Agent":"Mozilla/5.0 (compatible; OTC-M/6.1)"},allow_redirects=True)
+        r=requests.get(url,timeout=15,headers={"User-Agent":"Mozilla/5.0 (compatible; OTC-M/6.2)"},allow_redirects=True)
         if r.status_code!=200:return None,r.url
-        html=r.text[:1500000]
-        patterns=[r'<meta[^>]+(?:property|name)=["\'](?:article:published_time|datePublished|publish(?:ed)?|publication_date)["\'][^>]+content=["\']([^"\']+)',r'"datePublished"\s*:\s*"([^"]+)"',r'<time[^>]+datetime=["\']([^"\']+)["\']']
-        dates=[]
+        html=r.text[:2000000]; dates=[]
+        patterns=[r'<meta[^>]+(?:property|name)=["\'](?:article:published_time|datePublished|datepublished|publish(?:ed)?|publication_date|parsely-pub-date)["\'][^>]+content=["\']([^"\']+)',r'"datePublished"\s*:\s*"([^"]+)"',r'<time[^>]+datetime=["\']([^"\']+)["\']']
         for p in patterns:
             for x in re.findall(p,html,re.I):
                 d=parse_date_value(x)
@@ -80,14 +75,20 @@ def event_key(title):
     return " ".join(t.split())
 
 def discover_news(symbol):
-    u="https://news.google.com/rss/search?q="+quote(f'"{symbol}" OTC stock when:2d')+"&hl=en-US&gl=US&ceid=US:en"
-    try:return feedparser.parse(requests.get(u,timeout=15,headers={"User-Agent":"OTC-M/6.1"}).content).entries[:15]
-    except Exception as e:print(f"שגיאה באיתור חדשות {symbol}: {e}");return []
+    urls=[f'https://news.google.com/rss/search?q={quote(f"{symbol} OTC stock when:3d")}&hl=en-US&gl=US&ceid=US:en',f'https://news.google.com/rss/search?q={quote(f"{symbol} company news when:3d")}&hl=en-US&gl=US&ceid=US:en']
+    entries=[];seen=set()
+    for u in urls:
+        try:
+            for e in feedparser.parse(requests.get(u,timeout=15,headers={"User-Agent":"OTC-M/6.2"}).content).entries[:20]:
+                key=e.get("link","") or e.get("title","")
+                if key and key not in seen:seen.add(key);entries.append(e)
+        except Exception as e:print(f"שגיאה באיתור חדשות {symbol}: {e}")
+    return entries[:25]
 
 def score(title,age):
     t=title.lower();s=sum(p for w,p in GOOD.items() if w in t)+sum(p for w,p in FUTURE.items() if w in t)+sum(p for w,p in BAD.items() if w in t)
     if age<=24:s+=2
-    elif age>36:s-=2
+    elif age>48:s-=2
     return max(0,min(10,s))
 
 def classify(title,s):
@@ -111,21 +112,22 @@ def run_scanner():
     except:stocks=[]
     if not stocks:print("לא נמצאה רשימת מניות OTC");return
     state=load_state();today=datetime.now(timezone.utc).date().isoformat();day=state.setdefault(today,{})
-    alerts=[]
+    alerts=[];stats={"מניות":0,"מועמדי RSS":0,"ללא קישור":0,"ללא תאריך מקור":0,"ישנות":0,"כפולות":0,"ציון נמוך":0,"מועמדים":0}
     for raw in stocks[:300]:
-        symbol=str(raw).upper().strip()
+        stats["מניות"]+=1;symbol=str(raw).upper().strip()
         if not symbol:continue
         for item in discover_news(symbol):
-            title=item.get("title","").strip();rss_url=item.get("link","").strip()
-            if not title or not rss_url:continue
+            stats["מועמדי RSS"]+=1;title=item.get("title","").strip();rss_url=item.get("link","").strip()
+            if not title or not rss_url:stats["ללא קישור"]+=1;continue
             source_dt,source_url=extract_source_date(rss_url)
-            if not source_dt:continue
+            if not source_dt:stats["ללא תאריך מקור"]+=1;continue
             age=(datetime.now(timezone.utc)-source_dt).total_seconds()/3600
-            if age<0 or age>MAX_AGE_HOURS:continue
+            if age<0 or age>MAX_AGE_HOURS:stats["ישנות"]+=1;continue
             ticker=day.setdefault(symbol,{});ident=source_url.lower();ev=event_key(title)
-            if ident in ticker or any(isinstance(v,dict) and v.get("event")==ev for v in ticker.values()):continue
+            if ident in ticker or any(isinstance(v,dict) and v.get("event")==ev for v in ticker.values()):stats["כפולות"]+=1;continue
             s=score(title,age);ticker[ident]={"event":ev,"title":title,"published":source_dt.isoformat(),"source":source_url}
-            if s<5:continue
+            if s<5:stats["ציון נמוך"]+=1;continue
+            stats["מועמדים"]+=1
             verified,src,securl=sec_verify(symbol);label,meaning=classify(title,s)
             try:info=yf.Ticker(symbol).fast_info;price=info.get("last_price","לא זמין");vol=info.get("last_volume","לא זמין")
             except:price=vol="לא זמין"
@@ -135,7 +137,9 @@ def run_scanner():
     best={}
     for s,sym,msg in alerts:
         if sym not in best or s>best[sym][0]:best[sym]=(s,msg)
-    for _,msg in sorted(best.values(),reverse=True)[:5]:send_telegram("🇮🇱 OTC M — איתות חדש\n\n"+msg+"\n\n🕒 זמן בדיקה: "+datetime.now().strftime("%d/%m/%Y %H:%M"))
-    print(f"OTC-M v6.1: איתותים חדשים וייחודיים: {min(5,len(best))}")
+    selected=sorted(best.values(),reverse=True)[:5]
+    for _,msg in selected:send_telegram("🇮🇱 OTC M — איתות חדש\n\n"+msg+"\n\n🕒 זמן בדיקה: "+datetime.now().strftime("%d/%m/%Y %H:%M"))
+    print("OTC-M v6.2 — סיכום סריקה:",json.dumps(stats,ensure_ascii=False))
+    print(f"OTC-M v6.2: מועמדים שעברו סינון: {stats['מועמדים']} | איתותים שנשלחו: {len(selected)}")
 
 if __name__=="__main__":run_scanner()
