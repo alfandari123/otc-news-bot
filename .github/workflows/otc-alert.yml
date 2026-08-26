@@ -2,6 +2,13 @@ name: OTC M scanner
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'otc_scanner.py'
+      - 'otc_list.py'
+      - 'requirements.txt'
+      - '.github/workflows/otc-alert.yml'
   schedule:
     - cron: '*/5 * * * *'
 
